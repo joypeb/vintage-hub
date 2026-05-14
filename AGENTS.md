@@ -76,7 +76,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Project Structure & Module Organization
 
-- This is a single-module Spring Boot backend project built with Gradle. Application code lives under `src/main/java/com/joypeb/vintagehub`, with `VintageHubBeApplication` as the boot entry point. Runtime configuration is in `src/main/resources/application.yaml`. Tests mirror the main package under `src/test/java/com/joypeb/vintagehub`.
+- This is a single-module Spring Boot backend project built with Gradle. Application code lives under `src/main/java/com/joypeb/vintagehub`, with `VintageHubBeApplication` as the boot entry point. Runtime configuration is in `src/main/resources/application.yml` and profile-specific `application-*.yml` files. Tests mirror the main package under `src/test/java/com/joypeb/vintagehub`.
 - Project documentation and product notes are kept in `docs/`, including crawl policy material under `docs/crawling-policy/`.
   - 크롤링 가능 여부 : `docs/crawlability-report.md`
   - 아키텍처 : `docs/architecture.md`
@@ -108,4 +108,4 @@ Recent commits mostly use short Conventional Commit style messages, for example 
 
 ## Security & Configuration Tips
 
-Do not commit secrets or local credentials. Keep environment-specific values out of `application.yaml`; use profiles, environment variables, or external configuration for sensitive settings. Document new crawler behavior or site-specific rules in `docs/crawling-policy/`.
+Do not commit secrets or local credentials. Keep environment-specific values out of `application.yml`; use profiles, environment variables, or external configuration for sensitive settings. Document new crawler behavior or site-specific rules in `docs/crawling-policy/`.

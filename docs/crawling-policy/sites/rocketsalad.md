@@ -4,6 +4,8 @@
 대상 사이트: https://www.rocketsalad.co.kr/  
 대상 플랫폼: MakeShop
 
+현재 코드 기준 구현 설명: [rocketsalad-current-implementation.md](./rocketsalad-current-implementation.md)
+
 ## 결론
 
 로켓샐러드는 MVP 최우선 수집 대상으로 적합하다. 현재 `robots.txt`는 전체 경로를 허용하고 `/makeshop/`만 차단한다.
