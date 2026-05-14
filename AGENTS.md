@@ -72,7 +72,12 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 
 ## Project Structure & Module Organization
 
-This is a single-module Spring Boot backend project built with Gradle. Application code lives under `src/main/java/com/joypeb/vintagehub`, with `VintageHubBeApplication` as the boot entry point. Runtime configuration is in `src/main/resources/application.yaml`. Tests mirror the main package under `src/test/java/com/joypeb/vintagehub`. Project documentation and product notes are kept in `docs/`, including crawl policy material under `docs/crawling-policy/`.
+- This is a single-module Spring Boot backend project built with Gradle. Application code lives under `src/main/java/com/joypeb/vintagehub`, with `VintageHubBeApplication` as the boot entry point. Runtime configuration is in `src/main/resources/application.yaml`. Tests mirror the main package under `src/test/java/com/joypeb/vintagehub`.
+- Project documentation and product notes are kept in `docs/`, including crawl policy material under `docs/crawling-policy/`.
+  - 크롤링 가능 여부 : `docs/crawlability-report.md`
+  - 아키텍처 : `docs/architecture.md`
+  - 기획, 디자인 : `docs/design.md` 
+
 
 ## Build, Test, and Development Commands
 
