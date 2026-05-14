@@ -68,7 +68,11 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - Java 25
 - Spring boot 4.0.6
 - Gradle
-- PostgreSQL
+- PostgreSQL 17
+- Docker Compose
+- Spring Data JPA
+- QueryDSL
+- Flyway
 
 ## Project Structure & Module Organization
 
@@ -85,6 +89,8 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 - `./gradlew test`: runs the JUnit Platform test suite.
 - `./gradlew build`: compiles, runs tests, and produces the build artifacts.
 - `./gradlew clean`: removes generated Gradle build output.
+- `docker compose up -d`: starts the local PostgreSQL 17 database defined in `docker-compose.yml`.
+- `docker compose down`: stops the local PostgreSQL 17 database.
 
 Use the checked-in Gradle wrapper instead of a system Gradle install. The project targets Java 25 via Gradle toolchains, so ensure a compatible JDK is available.
 
