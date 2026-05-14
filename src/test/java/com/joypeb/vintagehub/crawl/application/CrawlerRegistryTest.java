@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 
 import java.net.URI;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -55,7 +56,7 @@ class CrawlerRegistryTest {
 
 		@Override
 		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
-			return new CrawledProductDetail(productRef, null, null, null, ProductAvailability.UNKNOWN);
+			return new CrawledProductDetail(productRef, null, null, null, ProductAvailability.UNKNOWN, null, null, null, Map.of());
 		}
 
 		@Override
