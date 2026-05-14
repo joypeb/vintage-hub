@@ -1,5 +1,6 @@
 package com.joypeb.vintagehub.crawl;
 
+import com.joypeb.vintagehub.common.api.ApiResponse;
 import com.joypeb.vintagehub.crawl.application.CrawlRunResult;
 import com.joypeb.vintagehub.crawl.application.CrawlRunService;
 import org.springframework.http.HttpStatus;
@@ -20,10 +21,10 @@ class CrawlRunController {
 	}
 
 	@PostMapping("/{siteCode}/crawl-runs")
-	ResponseEntity<CrawlRunResponse> requestCrawlRun(@PathVariable String siteCode) {
+	ResponseEntity<ApiResponse<CrawlRunResponse>> requestCrawlRun(@PathVariable String siteCode) {
 		CrawlRunResult result = crawlRunService.requestManualRun(siteCode);
 		return ResponseEntity.status(HttpStatus.ACCEPTED)
-			.body(CrawlRunResponse.from(result));
+			.body(ApiResponse.success(CrawlRunResponse.from(result)));
 	}
 
 	record CrawlRunResponse(String siteCode, String status, int foundCount, int createdCount, int updatedCount,

@@ -59,6 +59,17 @@ public class RocketSaladCrawler implements SiteCrawler {
 	}
 
 	@Override
+	public List<CrawlCursor> initialCursors() {
+		return List.of(
+			new CrawlCursor("TOP:1"),
+			new CrawlCursor("OUTER:1"),
+			new CrawlCursor("PANTS:1"),
+			new CrawlCursor("ACC:1"),
+			new CrawlCursor("WOMEN:1")
+		);
+	}
+
+	@Override
 	public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
 		ListCursor listCursor = ListCursor.parse(cursor);
 		URI listUrl = mobileListUrl(site.baseUrl(), listCursor);

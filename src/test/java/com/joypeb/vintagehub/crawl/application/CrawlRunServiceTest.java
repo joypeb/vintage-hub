@@ -1,6 +1,7 @@
 package com.joypeb.vintagehub.crawl.application;
 
 import com.joypeb.vintagehub.crawl.domain.CrawlListResult;
+import com.joypeb.vintagehub.crawl.domain.CrawlCursor;
 import com.joypeb.vintagehub.crawl.domain.CrawlTargetSite;
 import com.joypeb.vintagehub.crawl.domain.CrawledProductDetail;
 import com.joypeb.vintagehub.crawl.domain.CrawledProductRef;
@@ -26,6 +27,8 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class CrawlRunServiceTest {
@@ -62,16 +65,110 @@ class CrawlRunServiceTest {
 		assertThat(site.lastChangedAt()).isNotNull();
 		assertThat(site.lastChangeDetectedAt()).isNotNull();
 		ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
-		org.mockito.Mockito.verify(productRepository).save(productCaptor.capture());
+		verify(productRepository).save(productCaptor.capture());
 		ProductEntity savedProduct = productCaptor.getValue();
 		assertThat(savedProduct.name()).isEqualTo("90`s Levi`s 550 Relaxed Fit Denim Shorts (33)");
 		assertThat(savedProduct.stockStatus()).isEqualTo(ProductAvailability.AVAILABLE);
 		assertThat(savedProduct.originalPrice()).isEqualByComparingTo("55000");
 		@SuppressWarnings({"unchecked", "rawtypes"})
 		ArgumentCaptor<List<ProductMeasurementEntity>> measurementCaptor = ArgumentCaptor.forClass((Class) List.class);
-		org.mockito.Mockito.verify(measurementRepository).saveAll(measurementCaptor.capture());
+		verify(measurementRepository).saveAll(measurementCaptor.capture());
 		assertThat(measurementCaptor.getValue()).extracting(ProductMeasurementEntity::part)
 			.containsExactlyInAnyOrder("허리", "기장");
+	}
+
+	@Test
+	void requestManualRunWalksInitialCursorsAndStopsPagingWhenExistingProductAppears() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		PagedSiteCrawler crawler = new PagedSiteCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "top-new")).thenReturn(Optional.empty());
+		when(productRepository.findBySiteAndSourceProductId(site, "top-old"))
+			.thenReturn(Optional.of(ProductEntity.create(site, "top-old")));
+		when(productRepository.findBySiteAndSourceProductId(site, "pants-new")).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CrawlRunResult result = service.requestManualRun("rocketsalad");
+
+		assertThat(result.foundCount()).isEqualTo(3);
+		assertThat(result.createdCount()).isEqualTo(2);
+		assertThat(result.updatedCount()).isZero();
+		assertThat(result.failedCount()).isZero();
+		assertThat(crawler.fetchedCursors).containsExactly("TOP:1", "TOP:2", "PANTS:1");
+		assertThat(crawler.fetchedDetails).containsExactly("top-new", "pants-new");
+		ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+		verify(productRepository, times(2)).save(productCaptor.capture());
+		assertThat(productCaptor.getAllValues()).extracting(ProductEntity::stockStatus)
+			.containsOnly(ProductAvailability.SOLD_OUT);
+	}
+
+	@Test
+	void requestManualRunRecordsProductFailureReasonsInRunMessage() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		FailingDetailCrawler crawler = new FailingDetailCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "fail-1")).thenReturn(Optional.empty());
+
+		CrawlRunResult result = service.requestManualRun("rocketsalad");
+
+		assertThat(result.status()).isEqualTo("SUCCEEDED");
+		assertThat(result.foundCount()).isEqualTo(1);
+		assertThat(result.createdCount()).isZero();
+		assertThat(result.updatedCount()).isZero();
+		assertThat(result.failedCount()).isEqualTo(1);
+		assertThat(result.message()).contains("fail-1");
+		assertThat(result.message()).contains("detail exploded");
+	}
+
+	@Test
+	void requestManualRunLimitsPagingPerInitialCursor() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		NeverEndingSiteCrawler crawler = new NeverEndingSiteCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(any(), any())).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CrawlRunResult result = service.requestManualRun("rocketsalad");
+
+		assertThat(crawler.fetchedCursors).containsExactly("TOP:1", "TOP:2", "TOP:3");
+		assertThat(result.foundCount()).isEqualTo(3);
+		assertThat(result.createdCount()).isEqualTo(3);
 	}
 
 	private static class StubSiteCrawler implements SiteCrawler {
@@ -82,7 +179,7 @@ class CrawlRunServiceTest {
 		}
 
 		@Override
-		public CrawlListResult fetchList(CrawlTargetSite site, com.joypeb.vintagehub.crawl.domain.CrawlCursor cursor) {
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
 			CrawledProductRef ref = new CrawledProductRef("521529",
 				URI.create("https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid=521529"));
 			return new CrawlListResult(List.of(new CrawledProductSummary(ref, "fallback",
@@ -108,5 +205,124 @@ class CrawlRunServiceTest {
 		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
 			return ProductAvailability.AVAILABLE;
 		}
+	}
+
+	private static class PagedSiteCrawler implements SiteCrawler {
+
+		private final List<String> fetchedCursors = new java.util.ArrayList<>();
+		private final List<String> fetchedDetails = new java.util.ArrayList<>();
+
+		@Override
+		public String siteCode() {
+			return "rocketsalad";
+		}
+
+		@Override
+		public List<CrawlCursor> initialCursors() {
+			return List.of(new CrawlCursor("TOP:1"), new CrawlCursor("PANTS:1"));
+		}
+
+		@Override
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+			fetchedCursors.add(cursor.value());
+			if ("TOP:1".equals(cursor.value())) {
+				return new CrawlListResult(List.of(summary("top-new")), new CrawlCursor("TOP:2"));
+			}
+			if ("TOP:2".equals(cursor.value())) {
+				return new CrawlListResult(List.of(summary("top-old")), new CrawlCursor("TOP:3"));
+			}
+			if ("PANTS:1".equals(cursor.value())) {
+				return new CrawlListResult(List.of(summary("pants-new")), null);
+			}
+			throw new AssertionError("Unexpected cursor: " + cursor.value());
+		}
+
+		@Override
+		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+			fetchedDetails.add(productRef.sourceProductId());
+			return detail(productRef, ProductAvailability.SOLD_OUT);
+		}
+
+		@Override
+		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
+			return ProductAvailability.SOLD_OUT;
+		}
+	}
+
+	private static class FailingDetailCrawler implements SiteCrawler {
+
+		@Override
+		public String siteCode() {
+			return "rocketsalad";
+		}
+
+		@Override
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+			return new CrawlListResult(List.of(summary("fail-1")), null);
+		}
+
+		@Override
+		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+			throw new IllegalStateException("detail exploded");
+		}
+
+		@Override
+		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
+			return ProductAvailability.UNKNOWN;
+		}
+	}
+
+	private static class NeverEndingSiteCrawler implements SiteCrawler {
+
+		private final List<String> fetchedCursors = new java.util.ArrayList<>();
+
+		@Override
+		public String siteCode() {
+			return "rocketsalad";
+		}
+
+		@Override
+		public List<CrawlCursor> initialCursors() {
+			return List.of(new CrawlCursor("TOP:1"));
+		}
+
+		@Override
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+			fetchedCursors.add(cursor.value());
+			String[] parts = cursor.value().split(":", 2);
+			int nextPage = Integer.parseInt(parts[1]) + 1;
+			return new CrawlListResult(List.of(summary("top-" + parts[1])), new CrawlCursor(parts[0] + ":" + nextPage));
+		}
+
+		@Override
+		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+			return detail(productRef, ProductAvailability.AVAILABLE);
+		}
+
+		@Override
+		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
+			return ProductAvailability.AVAILABLE;
+		}
+	}
+
+	private static CrawledProductSummary summary(String sourceProductId) {
+		CrawledProductRef ref = new CrawledProductRef(sourceProductId,
+			URI.create("https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid=" + sourceProductId));
+		return new CrawledProductSummary(ref, "fallback",
+			URI.create("https://www.rocketsalad.co.kr/shopimages/" + sourceProductId + ".jpg"));
+	}
+
+	private static CrawledProductDetail detail(CrawledProductRef productRef, ProductAvailability availability) {
+		return new CrawledProductDetail(
+			productRef,
+			productRef.sourceProductId(),
+			new BigDecimal("55000"),
+			null,
+			availability,
+			"Size: 허리 44cm 기장 51cm",
+			URI.create("https://www.rocketsalad.co.kr/shopimages/" + productRef.sourceProductId() + ".jpg"),
+			"Pants > casual",
+			Map.of("허리", "44", "기장", "51")
+		);
 	}
 }

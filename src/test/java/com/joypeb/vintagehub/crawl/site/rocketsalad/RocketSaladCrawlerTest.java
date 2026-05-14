@@ -18,6 +18,14 @@ class RocketSaladCrawlerTest {
 	private final CrawlTargetSite site = new CrawlTargetSite("rocketsalad", URI.create("https://www.rocketsalad.co.kr"));
 
 	@Test
+	void initialCursorsCoverAllConfiguredCategories() {
+		RocketSaladCrawler crawler = new RocketSaladCrawler(new StubPageClient(Map.of()));
+
+		assertThat(crawler.initialCursors()).extracting(CrawlCursor::value)
+			.containsExactly("TOP:1", "OUTER:1", "PANTS:1", "ACC:1", "WOMEN:1");
+	}
+
+	@Test
 	void fetchListParsesMobileProductCards() {
 		RocketSaladCrawler crawler = new RocketSaladCrawler(new StubPageClient(Map.of(
 			"https://www.rocketsalad.co.kr/m/product_list.html?xcode=115&type=X&viewtype=gallery&page=2&sort=order",

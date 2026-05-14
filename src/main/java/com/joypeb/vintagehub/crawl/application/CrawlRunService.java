@@ -1,6 +1,7 @@
 package com.joypeb.vintagehub.crawl.application;
 
 import com.joypeb.vintagehub.crawl.domain.CrawlListResult;
+import com.joypeb.vintagehub.crawl.domain.CrawlCursor;
 import com.joypeb.vintagehub.crawl.domain.CrawlTargetSite;
 import com.joypeb.vintagehub.crawl.domain.CrawledProductDetail;
 import com.joypeb.vintagehub.crawl.domain.CrawledProductSummary;
@@ -24,6 +25,8 @@ import java.util.Map;
 
 @Service
 public class CrawlRunService {
+
+	private static final int MAX_PAGES_PER_INITIAL_CURSOR = 3;
 
 	private final CrawlSiteRepository siteRepository;
 	private final CrawlRunRepository runRepository;
@@ -50,13 +53,13 @@ public class CrawlRunService {
 		run.markRunning();
 
 		try {
-			CrawlListResult listResult = crawler.fetchList(new CrawlTargetSite(site.code(), site.baseUrl()), null);
-			CrawlCounts counts = saveProducts(site, crawler, listResult.products());
-			run.markSucceeded(counts.foundCount(), counts.createdCount(), counts.updatedCount(), counts.failedCount(),
-				"Crawl run completed.");
-			site.markCrawled(counts.createdCount() + counts.updatedCount() > 0);
-			return new CrawlRunResult(site.code(), run.status().name(), counts.foundCount(), counts.createdCount(),
-				counts.updatedCount(), counts.failedCount(), run.message());
+			CrawlCounts counts = saveProducts(site, crawler);
+			String message = successMessage(counts);
+			run.markSucceeded(counts.foundCount, counts.createdCount, counts.updatedCount, counts.failedCount,
+				message);
+			site.markCrawled(counts.createdCount + counts.updatedCount > 0);
+			return new CrawlRunResult(site.code(), run.status().name(), counts.foundCount, counts.createdCount,
+				counts.updatedCount, counts.failedCount, run.message());
 		}
 		catch (RuntimeException exception) {
 			run.markFailed(exception.getMessage());
@@ -64,34 +67,56 @@ public class CrawlRunService {
 		}
 	}
 
-	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler, List<CrawledProductSummary> summaries) {
-		int createdCount = 0;
-		int updatedCount = 0;
-		int failedCount = 0;
-		Instant collectedAt = Instant.now();
+	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler) {
+		CrawlCounts counts = new CrawlCounts();
 		CrawlTargetSite targetSite = new CrawlTargetSite(site.code(), site.baseUrl());
+		List<CrawlCursor> initialCursors = crawler.initialCursors();
 
+		if (initialCursors.isEmpty()) {
+			collectCursor(site, crawler, targetSite, null, counts);
+			return counts;
+		}
+		for (CrawlCursor initialCursor : initialCursors) {
+			collectCursor(site, crawler, targetSite, initialCursor, counts);
+		}
+		return counts;
+	}
+
+	private void collectCursor(CrawlSiteEntity site, SiteCrawler crawler, CrawlTargetSite targetSite,
+			CrawlCursor initialCursor, CrawlCounts counts) {
+		CrawlCursor cursor = initialCursor;
+		for (int pageCount = 0; pageCount < MAX_PAGES_PER_INITIAL_CURSOR; pageCount++) {
+			CrawlListResult listResult = crawler.fetchList(targetSite, cursor);
+			boolean stopPaging = savePageProducts(site, crawler, targetSite, listResult.products(), counts);
+			if (stopPaging || listResult.nextCursor() == null || listResult.products().isEmpty()) {
+				return;
+			}
+			cursor = listResult.nextCursor();
+		}
+	}
+
+	private boolean savePageProducts(CrawlSiteEntity site, SiteCrawler crawler, CrawlTargetSite targetSite,
+			List<CrawledProductSummary> summaries, CrawlCounts counts) {
+		Instant collectedAt = Instant.now();
 		for (CrawledProductSummary summary : summaries) {
+			counts.foundCount++;
+			if (productRepository.findBySiteAndSourceProductId(site, summary.ref().sourceProductId()).isPresent()) {
+				return true;
+			}
 			try {
 				CrawledProductDetail detail = crawler.fetchDetail(targetSite, summary.ref());
-				var existingProduct = productRepository.findBySiteAndSourceProductId(site, detail.ref().sourceProductId());
-				boolean exists = existingProduct.isPresent();
-				ProductEntity product = existingProduct.orElseGet(() -> ProductEntity.create(site, detail.ref().sourceProductId()));
+				ProductEntity product = ProductEntity.create(site, detail.ref().sourceProductId());
 				product.updateFrom(detail, summary, collectedAt);
 				ProductEntity savedProduct = productRepository.save(product);
 				replaceMeasurements(savedProduct, detail);
-				if (exists) {
-					updatedCount++;
-				}
-				else {
-					createdCount++;
-				}
+				counts.createdCount++;
 			}
 			catch (RuntimeException exception) {
-				failedCount++;
+				counts.failedCount++;
+				counts.failureReasons.add(summary.ref().sourceProductId() + ": " + failureMessage(exception));
 			}
 		}
-		return new CrawlCounts(summaries.size(), createdCount, updatedCount, failedCount);
+		return false;
 	}
 
 	private void replaceMeasurements(ProductEntity product, CrawledProductDetail detail) {
@@ -108,6 +133,33 @@ public class CrawlRunService {
 		measurementRepository.saveAll(entities);
 	}
 
-	private record CrawlCounts(int foundCount, int createdCount, int updatedCount, int failedCount) {
+	private String successMessage(CrawlCounts counts) {
+		if (counts.failureReasons.isEmpty()) {
+			return "Crawl run completed.";
+		}
+		return truncate("Crawl run completed with failures: " + String.join("; ", counts.failureReasons), 1000);
+	}
+
+	private String failureMessage(RuntimeException exception) {
+		String message = exception.getMessage();
+		if (message == null || message.isBlank()) {
+			return exception.getClass().getSimpleName();
+		}
+		return message;
+	}
+
+	private String truncate(String value, int maxLength) {
+		if (value.length() <= maxLength) {
+			return value;
+		}
+		return value.substring(0, maxLength);
+	}
+
+	private static class CrawlCounts {
+		private int foundCount;
+		private int createdCount;
+		private int updatedCount;
+		private int failedCount;
+		private final List<String> failureReasons = new ArrayList<>();
 	}
 }
