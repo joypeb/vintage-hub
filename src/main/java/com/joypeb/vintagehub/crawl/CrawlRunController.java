@@ -1,5 +1,7 @@
 package com.joypeb.vintagehub.crawl;
 
+import com.joypeb.vintagehub.crawl.application.CrawlRunResult;
+import com.joypeb.vintagehub.crawl.application.CrawlRunService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,12 +13,25 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/crawl-sites")
 class CrawlRunController {
 
-	@PostMapping("/{siteCode}/crawl-runs")
-	ResponseEntity<CrawlRunResponse> requestCrawlRun(@PathVariable String siteCode) {
-		return ResponseEntity.status(HttpStatus.ACCEPTED)
-			.body(new CrawlRunResponse(siteCode, "ACCEPTED", "Crawl request accepted."));
+	private final CrawlRunService crawlRunService;
+
+	CrawlRunController(CrawlRunService crawlRunService) {
+		this.crawlRunService = crawlRunService;
 	}
 
-	record CrawlRunResponse(String siteCode, String status, String message) {
+	@PostMapping("/{siteCode}/crawl-runs")
+	ResponseEntity<CrawlRunResponse> requestCrawlRun(@PathVariable String siteCode) {
+		CrawlRunResult result = crawlRunService.requestManualRun(siteCode);
+		return ResponseEntity.status(HttpStatus.ACCEPTED)
+			.body(CrawlRunResponse.from(result));
+	}
+
+	record CrawlRunResponse(String siteCode, String status, int foundCount, int createdCount, int updatedCount,
+			int failedCount, String message) {
+
+		private static CrawlRunResponse from(CrawlRunResult result) {
+			return new CrawlRunResponse(result.siteCode(), result.status(), result.foundCount(), result.createdCount(),
+				result.updatedCount(), result.failedCount(), result.message());
+		}
 	}
 }
