@@ -3,6 +3,8 @@ package com.joypeb.vintagehub.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.joypeb.vintagehub.common.api.ApiResponse;
 import com.joypeb.vintagehub.common.api.ErrorCode;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -23,6 +25,8 @@ import java.nio.charset.StandardCharsets;
 @EnableConfigurationProperties({ AdminAuthProperties.class, JwtProperties.class })
 class SecurityConfig {
 
+	private static final Logger log = LoggerFactory.getLogger(SecurityConfig.class);
+
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@Bean
@@ -34,10 +38,24 @@ class SecurityConfig {
 				.requestMatchers("/api/admin/**").hasRole("ADMIN")
 				.anyRequest().permitAll())
 			.exceptionHandling(exception -> exception
-				.authenticationEntryPoint((request, response, authException) -> writeAuthError(response,
-					ErrorCode.UNAUTHORIZED, "인증이 필요합니다.", HttpStatus.UNAUTHORIZED))
-				.accessDeniedHandler((request, response, accessDeniedException) -> writeAuthError(response,
-					ErrorCode.FORBIDDEN, "권한이 부족합니다.", HttpStatus.FORBIDDEN)))
+				.authenticationEntryPoint((request, response, authException) -> {
+					log.atWarn()
+						.addKeyValue("event", "auth.request.rejected")
+						.addKeyValue("path", request.getRequestURI())
+						.addKeyValue("status", 401)
+						.addKeyValue("reason", "unauthenticated")
+						.log("auth.request.rejected");
+					writeAuthError(response, ErrorCode.UNAUTHORIZED, "인증이 필요합니다.", HttpStatus.UNAUTHORIZED);
+				})
+				.accessDeniedHandler((request, response, accessDeniedException) -> {
+					log.atWarn()
+						.addKeyValue("event", "auth.request.rejected")
+						.addKeyValue("path", request.getRequestURI())
+						.addKeyValue("status", 403)
+						.addKeyValue("reason", "access-denied")
+						.log("auth.request.rejected");
+					writeAuthError(response, ErrorCode.FORBIDDEN, "권한이 부족합니다.", HttpStatus.FORBIDDEN);
+				}))
 			.addFilterBefore(new JwtAuthenticationFilter(jwtTokenProvider), UsernamePasswordAuthenticationFilter.class);
 		return http.build();
 	}

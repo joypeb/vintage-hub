@@ -2,6 +2,9 @@ package com.joypeb.vintagehub.common.api;
 
 import com.joypeb.vintagehub.auth.InvalidAdminCredentialsException;
 import com.joypeb.vintagehub.auth.PasswordHashApiDisabledException;
+import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -10,32 +13,74 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 class GlobalExceptionHandler {
 
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
 	@ExceptionHandler(IllegalArgumentException.class)
-	ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException exception) {
+	ResponseEntity<ApiResponse<Void>> handleIllegalArgumentException(IllegalArgumentException exception,
+			HttpServletRequest request) {
+		log.atWarn()
+			.addKeyValue("event", "api.error.handled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 400)
+			.addKeyValue("errorCode", ErrorCode.INVALID_REQUEST)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.handled");
 		return ResponseEntity.badRequest()
 			.body(ApiResponse.error(ErrorCode.INVALID_REQUEST, exception.getMessage()));
 	}
 
 	@ExceptionHandler(ResourceNotFoundException.class)
-	ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(ResourceNotFoundException exception) {
+	ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(ResourceNotFoundException exception,
+			HttpServletRequest request) {
+		log.atWarn()
+			.addKeyValue("event", "api.error.handled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 404)
+			.addKeyValue("errorCode", ErrorCode.NOT_FOUND)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.handled");
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
 			.body(ApiResponse.error(ErrorCode.NOT_FOUND, exception.getMessage()));
 	}
 
 	@ExceptionHandler(InvalidAdminCredentialsException.class)
-	ResponseEntity<ApiResponse<Void>> handleInvalidAdminCredentialsException(InvalidAdminCredentialsException exception) {
+	ResponseEntity<ApiResponse<Void>> handleInvalidAdminCredentialsException(InvalidAdminCredentialsException exception,
+			HttpServletRequest request) {
+		log.atWarn()
+			.addKeyValue("event", "api.error.handled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 401)
+			.addKeyValue("errorCode", ErrorCode.UNAUTHORIZED)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.handled");
 		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
 			.body(ApiResponse.error(ErrorCode.UNAUTHORIZED, exception.getMessage()));
 	}
 
 	@ExceptionHandler(PasswordHashApiDisabledException.class)
-	ResponseEntity<ApiResponse<Void>> handlePasswordHashApiDisabledException(PasswordHashApiDisabledException exception) {
+	ResponseEntity<ApiResponse<Void>> handlePasswordHashApiDisabledException(PasswordHashApiDisabledException exception,
+			HttpServletRequest request) {
+		log.atWarn()
+			.addKeyValue("event", "api.error.handled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 403)
+			.addKeyValue("errorCode", ErrorCode.FORBIDDEN)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.handled");
 		return ResponseEntity.status(HttpStatus.FORBIDDEN)
 			.body(ApiResponse.error(ErrorCode.FORBIDDEN, exception.getMessage()));
 	}
 
 	@ExceptionHandler(Exception.class)
-	ResponseEntity<ApiResponse<Void>> handleException(Exception exception) {
+	ResponseEntity<ApiResponse<Void>> handleException(Exception exception, HttpServletRequest request) {
+		log.atError()
+			.setCause(exception)
+			.addKeyValue("event", "api.error.unhandled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 500)
+			.addKeyValue("errorCode", ErrorCode.INTERNAL_SERVER_ERROR)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.unhandled");
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
 			.body(ApiResponse.error(ErrorCode.INTERNAL_SERVER_ERROR, "Unexpected server error."));
 	}

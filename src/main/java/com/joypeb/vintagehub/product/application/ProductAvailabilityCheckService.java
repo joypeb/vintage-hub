@@ -49,6 +49,10 @@ public class ProductAvailabilityCheckService {
 
 	@Transactional
 	public ProductAvailabilityCheckResult checkProduct(Long productId) {
+		log.atInfo()
+			.addKeyValue("event", "product.availability.check.requested")
+			.addKeyValue("productId", productId)
+			.log("product.availability.check.requested");
 		ProductEntity product = productRepository.findById(productId)
 			.orElseThrow(() -> new ResourceNotFoundException("Product not found: " + productId));
 		return checkProducts(List.of(product));
@@ -62,8 +66,17 @@ public class ProductAvailabilityCheckService {
 	@Transactional
 	public ProductAvailabilityCheckResult checkDueProducts(int batchSize) {
 		int resolvedBatchSize = Math.max(batchSize, 1);
+		log.atDebug()
+			.addKeyValue("event", "product.availability.due.search.started")
+			.addKeyValue("batchSize", resolvedBatchSize)
+			.log("product.availability.due.search.started");
 		List<ProductEntity> products = productRepository.findDueForAvailabilityCheck(Instant.now(clock),
 			PageRequest.of(0, resolvedBatchSize));
+		log.atInfo()
+			.addKeyValue("event", "product.availability.due.search.completed")
+			.addKeyValue("batchSize", resolvedBatchSize)
+			.addKeyValue("productCount", products.size())
+			.log("product.availability.due.search.completed");
 		return checkProducts(products);
 	}
 
@@ -87,15 +100,26 @@ public class ProductAvailabilityCheckService {
 			product.markAvailabilityCheckSucceeded(availability, checkedAt, nextCheckAt(availability, checkedAt));
 			productRepository.save(product);
 			counts.record(availability);
-			log.info("Product availability checked: productId={} siteCode={} sourceProductId={} availability={}",
-				product.id(), product.site().code(), product.sourceProductId(), availability);
+			log.atInfo()
+				.addKeyValue("event", "product.availability.check.succeeded")
+				.addKeyValue("productId", product.id())
+				.addKeyValue("siteCode", product.site().code())
+				.addKeyValue("sourceProductId", product.sourceProductId())
+				.addKeyValue("availability", availability)
+				.log("product.availability.check.succeeded");
 		}
 		catch (RuntimeException exception) {
 			product.markAvailabilityCheckFailed(checkedAt, nextCheckAt(ProductAvailability.CHECK_FAILED, checkedAt));
 			productRepository.save(product);
 			counts.recordFailure();
-			log.warn("Product availability check failed: productId={} siteCode={} sourceProductId={} reason={}",
-				product.id(), product.site().code(), product.sourceProductId(), failureMessage(exception), exception);
+			log.atWarn()
+				.setCause(exception)
+				.addKeyValue("event", "product.availability.check.failed")
+				.addKeyValue("productId", product.id())
+				.addKeyValue("siteCode", product.site().code())
+				.addKeyValue("sourceProductId", product.sourceProductId())
+				.addKeyValue("reason", failureMessage(exception))
+				.log("product.availability.check.failed");
 		}
 	}
 
@@ -117,8 +141,11 @@ public class ProductAvailabilityCheckService {
 		if (requestDelay.isZero() || requestDelay.isNegative()) {
 			return;
 		}
-		log.debug("Product availability request delay: productId={} delayMs={}", product.id(),
-			requestDelay.toMillis());
+		log.atDebug()
+			.addKeyValue("event", "product.availability.request.delay")
+			.addKeyValue("productId", product.id())
+			.addKeyValue("delayMs", requestDelay.toMillis())
+			.log("product.availability.request.delay");
 		sleeper.sleep(requestDelay);
 	}
 

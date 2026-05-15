@@ -236,10 +236,10 @@ class CrawlRunServiceTest {
 
 		service.requestManualRun("rocketsalad");
 
-		assertThat(output).contains("Crawl run started");
-		assertThat(output).contains("Crawl cursor fetched");
-		assertThat(output).contains("Crawl product saved");
-		assertThat(output).contains("Crawl run succeeded");
+		assertThat(output).contains("crawl.run.started");
+		assertThat(output).contains("crawl.cursor.fetch.succeeded");
+		assertThat(output).contains("crawl.product.saved");
+		assertThat(output).contains("crawl.run.succeeded");
 	}
 
 	@Test

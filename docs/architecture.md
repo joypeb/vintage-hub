@@ -443,6 +443,36 @@ MVP에서 최소로 필요한 관측 정보는 다음이다.
 
 초기에는 DB 기반 운영 화면, 애플리케이션 로그, Spring Boot Actuator health endpoint로 시작한다. Micrometer counter/timer는 크롤링 실행, 외부 HTTP 응답 코드, 파싱 실패율처럼 장애 분석에 바로 필요한 항목부터 붙인다. 대시보드는 운영 중 장애 분석이 어려워지는 시점에 추가해도 되지만, 지표를 남기는 계측 지점은 MVP부터 코드에 둔다.
 
+### 공통 로그 형식
+
+애플리케이션 로그는 Spring Boot structured logging의 `logstash` JSON 형식으로 출력한다. 로그 메시지에 JSON 문자열을 직접 만들지 않고, SLF4J fluent logging API의 `addKeyValue`로 필드를 전달한다.
+
+```java
+log.atInfo()
+    .addKeyValue("event", "crawl.run.started")
+    .addKeyValue("siteCode", siteCode)
+    .log("crawl.run.started");
+```
+
+출력 예시는 다음과 같다.
+
+```json
+{"@timestamp":"2026-05-15T12:00:00.000+09:00","@version":"1","message":"crawl.run.started","logger_name":"com.joypeb.vintagehub.crawl.application.CrawlRunService","thread_name":"http-nio-8080-exec-1","level":"INFO","level_value":20000,"event":"crawl.run.started","siteCode":"rocketsalad"}
+```
+
+규칙은 다음과 같다.
+
+- `event`는 모든 애플리케이션 로그에 포함하고, `auth.login.succeeded`, `crawl.run.started`, `product.search.completed`처럼 `<도메인>.<행위>.<상태>` 형식으로 쓴다.
+- 메시지는 `event`와 같은 값으로 두어 일반 콘솔 패턴에서도 핵심 이벤트를 찾을 수 있게 한다.
+- 필드는 `camelCase` key와 JSON으로 직렬화 가능한 원시 값 또는 짧은 값 객체로 남긴다. 예: `siteCode=rocketsalad`, `productId=1`, `resultCount=20`.
+- 운영 환경에서 장애 분석, 감사, 작업 추적에 필요한 로그는 `info` 이상으로 남긴다.
+- 개발 중 파싱 상태, 요청 지연, 필터 조건처럼 상세 진단에만 필요한 로그는 `debug`로 남긴다.
+- 복구 가능한 단건 실패나 외부 사이트 파싱 fallback은 `warn`, 예상하지 못한 시스템 실패는 `error`로 남긴다.
+- 비밀번호, JWT, 원본 HTML, 개인정보 가능성이 있는 값은 로그에 남기지 않는다.
+- 예외 로그는 `reason`에 요약 메시지를 남기고, 스택 트레이스가 필요한 경우 `setCause(exception)`으로 예외를 전달한다.
+- 모든 profile은 `logging.structured.format.console=logstash`를 사용한다.
+- `prod` profile은 `com.joypeb.vintagehub=INFO`, `dev`와 `local` profile은 `com.joypeb.vintagehub=DEBUG`를 기본으로 한다.
+
 ## 테스트 전략
 
 테스트는 경계별로 나눈다.

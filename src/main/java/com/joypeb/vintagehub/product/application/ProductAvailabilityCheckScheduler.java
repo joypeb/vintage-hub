@@ -22,11 +22,23 @@ class ProductAvailabilityCheckScheduler {
 	@Scheduled(fixedRateString = "${vintage-hub.product.availability-check.fixed-rate:10m}")
 	void checkDueProducts() {
 		if (!properties.enabled()) {
+			log.atDebug()
+				.addKeyValue("event", "product.availability.batch.skipped")
+				.addKeyValue("reason", "disabled")
+				.log("product.availability.batch.skipped");
 			return;
 		}
+		log.atInfo()
+			.addKeyValue("event", "product.availability.batch.started")
+			.log("product.availability.batch.started");
 		ProductAvailabilityCheckResult result = service.checkDueProducts();
-		log.info("Product availability batch finished: checked={} available={} soldOut={} unknown={} failed={}",
-			result.checkedCount(), result.availableCount(), result.soldOutCount(), result.unknownCount(),
-			result.failedCount());
+		log.atInfo()
+			.addKeyValue("event", "product.availability.batch.completed")
+			.addKeyValue("checkedCount", result.checkedCount())
+			.addKeyValue("availableCount", result.availableCount())
+			.addKeyValue("soldOutCount", result.soldOutCount())
+			.addKeyValue("unknownCount", result.unknownCount())
+			.addKeyValue("failedCount", result.failedCount())
+			.log("product.availability.batch.completed");
 	}
 }

@@ -10,5 +10,8 @@ vintage-hub:
     request-delay-ms: 1000
 
 logging:
+  structured:
+    format:
+      console: logstash
   level:
-    com.joypeb.vintagehub.crawl.site.rocketsalad: DEBUG
+    com.joypeb.vintagehub: DEBUG

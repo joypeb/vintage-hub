@@ -76,14 +76,25 @@ public class RocketSaladCrawler implements SiteCrawler {
 	public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
 		ListCursor listCursor = ListCursor.parse(cursor);
 		URI listUrl = mobileListUrl(site.baseUrl(), listCursor);
-		log.debug("RocketSalad list fetch started: cursor={} url={}", listCursor, listUrl);
+		log.atDebug()
+			.addKeyValue("event", "crawl.rocketsalad.list.fetch.started")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("cursor", listCursor)
+			.addKeyValue("url", listUrl)
+			.log("crawl.rocketsalad.list.fetch.started");
 		Document document = Jsoup.parse(pageClient.get(listUrl), listUrl.toString());
 		List<CrawledProductSummary> products = document.select("a[href*=/m/product.html?branduid=]").stream()
 			.map(anchor -> toSummary(site.baseUrl(), anchor))
 			.flatMap(Optional::stream)
 			.distinct()
 			.toList();
-		log.debug("RocketSalad list parsed: cursor={} url={} productCount={}", listCursor, listUrl, products.size());
+		log.atDebug()
+			.addKeyValue("event", "crawl.rocketsalad.list.parsed")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("cursor", listCursor)
+			.addKeyValue("url", listUrl)
+			.addKeyValue("productCount", products.size())
+			.log("crawl.rocketsalad.list.parsed");
 
 		return new CrawlListResult(products, new CrawlCursor(listCursor.category() + ":" + (listCursor.page() + 1)));
 	}
@@ -91,8 +102,12 @@ public class RocketSaladCrawler implements SiteCrawler {
 	@Override
 	public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
 		URI mobileDetailUrl = mobileDetailUrl(site.baseUrl(), productRef.sourceProductId());
-		log.debug("RocketSalad detail fetch started: sourceProductId={} url={}", productRef.sourceProductId(),
-			mobileDetailUrl);
+		log.atDebug()
+			.addKeyValue("event", "crawl.rocketsalad.detail.fetch.started")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("sourceProductId", productRef.sourceProductId())
+			.addKeyValue("url", mobileDetailUrl)
+			.log("crawl.rocketsalad.detail.fetch.started");
 		Document document = Jsoup.parse(pageClient.get(mobileDetailUrl), mobileDetailUrl.toString());
 		Optional<JsonNode> productJson = productJson(document);
 		JsonNode offers = productJson.map(json -> json.path("offers")).orElse(null);
@@ -111,10 +126,17 @@ public class RocketSaladCrawler implements SiteCrawler {
 			productJson.map(json -> json.path("category").asText(null)).orElse(null),
 			measurements(detailText)
 		);
-		log.debug("RocketSalad detail parsed: sourceProductId={} namePresent={} price={} stockStatus={} imagePresent={} descriptionLength={} measurementCount={}",
-			productRef.sourceProductId(), detail.name() != null && !detail.name().isBlank(), detail.originalPrice(),
-			detail.availability(), detail.thumbnailImageUrl() != null, detailText == null ? 0 : detailText.length(),
-			detail.measurements() == null ? 0 : detail.measurements().size());
+		log.atDebug()
+			.addKeyValue("event", "crawl.rocketsalad.detail.parsed")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("sourceProductId", productRef.sourceProductId())
+			.addKeyValue("namePresent", detail.name() != null && !detail.name().isBlank())
+			.addKeyValue("price", detail.originalPrice())
+			.addKeyValue("stockStatus", detail.availability())
+			.addKeyValue("imagePresent", detail.thumbnailImageUrl() != null)
+			.addKeyValue("descriptionLength", detailText == null ? 0 : detailText.length())
+			.addKeyValue("measurementCount", detail.measurements() == null ? 0 : detail.measurements().size())
+			.log("crawl.rocketsalad.detail.parsed");
 		return detail;
 	}
 
@@ -156,14 +178,19 @@ public class RocketSaladCrawler implements SiteCrawler {
 			return findProductJson(objectMapper.readTree(json));
 		}
 		catch (Exception exception) {
-			log.debug("RocketSalad JSON-LD parse failed; retrying after normalization: reason={}",
-				exception.getMessage());
+			log.atDebug()
+				.addKeyValue("event", "crawl.rocketsalad.jsonld.parse.retry")
+				.addKeyValue("reason", exception.getMessage())
+				.log("crawl.rocketsalad.jsonld.parse.retry");
 			try {
 				return findProductJson(objectMapper.readTree(normalizeJsonLd(json)));
 			}
 			catch (Exception retryException) {
-				log.warn("RocketSalad JSON-LD parsing failed after normalization; falling back to DOM selectors: reason={}",
-					retryException.getMessage());
+				log.atWarn()
+					.addKeyValue("event", "crawl.rocketsalad.jsonld.parse.failed")
+					.addKeyValue("fallback", "dom")
+					.addKeyValue("reason", retryException.getMessage())
+					.log("crawl.rocketsalad.jsonld.parse.failed");
 				return Optional.empty();
 			}
 		}

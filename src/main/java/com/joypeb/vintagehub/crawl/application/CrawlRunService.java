@@ -73,7 +73,11 @@ public class CrawlRunService {
 
 	@Transactional
 	public CrawlRunResult requestManualRun(String siteCode) {
-		log.info("Crawl run started: siteCode={} requestDelayMs={}", siteCode, requestDelay.toMillis());
+		log.atInfo()
+			.addKeyValue("event", "crawl.run.started")
+			.addKeyValue("siteCode", siteCode)
+			.addKeyValue("requestDelayMs", requestDelay.toMillis())
+			.log("crawl.run.started");
 		CrawlSiteEntity site = siteRepository.findByCode(siteCode)
 			.orElseThrow(() -> new IllegalArgumentException("Crawl site not found: " + siteCode));
 		SiteCrawler crawler = crawlerRegistry.requireBySiteCode(siteCode);
@@ -86,14 +90,26 @@ public class CrawlRunService {
 			run.markSucceeded(counts.foundCount, counts.createdCount, counts.updatedCount, counts.failedCount,
 				message);
 			site.markCrawled(counts.createdCount + counts.updatedCount > 0);
-			log.info("Crawl run succeeded: siteCode={} found={} created={} updated={} failed={} message={}",
-				site.code(), counts.foundCount, counts.createdCount, counts.updatedCount, counts.failedCount, message);
+			log.atInfo()
+				.addKeyValue("event", "crawl.run.succeeded")
+				.addKeyValue("siteCode", site.code())
+				.addKeyValue("foundCount", counts.foundCount)
+				.addKeyValue("createdCount", counts.createdCount)
+				.addKeyValue("updatedCount", counts.updatedCount)
+				.addKeyValue("failedCount", counts.failedCount)
+				.addKeyValue("resultMessage", message)
+				.log("crawl.run.succeeded");
 			return new CrawlRunResult(site.code(), run.status().name(), counts.foundCount, counts.createdCount,
 				counts.updatedCount, counts.failedCount, run.message());
 		}
 		catch (RuntimeException exception) {
 			run.markFailed(exception.getMessage());
-			log.error("Crawl run failed: siteCode={} reason={}", siteCode, failureMessage(exception), exception);
+			log.atError()
+				.setCause(exception)
+				.addKeyValue("event", "crawl.run.failed")
+				.addKeyValue("siteCode", siteCode)
+				.addKeyValue("reason", failureMessage(exception))
+				.log("crawl.run.failed");
 			throw exception;
 		}
 	}
@@ -102,8 +118,12 @@ public class CrawlRunService {
 		CrawlCounts counts = new CrawlCounts();
 		CrawlTargetSite targetSite = new CrawlTargetSite(site.code(), site.baseUrl());
 		List<CrawlCursor> initialCursors = crawler.initialCursors();
-		log.info("Crawl initial cursors resolved: siteCode={} cursorCount={} cursors={}", site.code(),
-			initialCursors.size(), initialCursors);
+		log.atInfo()
+			.addKeyValue("event", "crawl.cursors.resolved")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("cursorCount", initialCursors.size())
+			.addKeyValue("cursors", initialCursors)
+			.log("crawl.cursors.resolved");
 
 		if (initialCursors.isEmpty()) {
 			collectCursor(site, crawler, targetSite, null, counts);
@@ -119,26 +139,33 @@ public class CrawlRunService {
 			CrawlCursor initialCursor, CrawlCounts counts) {
 		CrawlCursor cursor = initialCursor;
 		for (int pageCount = 0; pageCount < MAX_PAGES_PER_INITIAL_CURSOR; pageCount++) {
-			log.info("Crawl cursor fetch started: siteCode={} cursor={} pageAttempt={}/{}", site.code(),
-				cursorValue(cursor), pageCount + 1, MAX_PAGES_PER_INITIAL_CURSOR);
+			log.atInfo()
+				.addKeyValue("event", "crawl.cursor.fetch.started")
+				.addKeyValue("siteCode", site.code())
+				.addKeyValue("cursor", cursorValue(cursor))
+				.addKeyValue("pageAttempt", pageCount + 1)
+				.addKeyValue("maxPageAttempt", MAX_PAGES_PER_INITIAL_CURSOR)
+				.log("crawl.cursor.fetch.started");
 			delayBeforeRequest(site.code(), "list", cursorValue(cursor));
 			CrawlListResult listResult = crawler.fetchList(targetSite, cursor);
-			log.info("Crawl cursor fetched: siteCode={} cursor={} productCount={} nextCursor={}", site.code(),
-				cursorValue(cursor), listResult.products().size(), cursorValue(listResult.nextCursor()));
+			log.atInfo()
+				.addKeyValue("event", "crawl.cursor.fetch.succeeded")
+				.addKeyValue("siteCode", site.code())
+				.addKeyValue("cursor", cursorValue(cursor))
+				.addKeyValue("productCount", listResult.products().size())
+				.addKeyValue("nextCursor", cursorValue(listResult.nextCursor()))
+				.log("crawl.cursor.fetch.succeeded");
 			boolean stopPaging = savePageProducts(site, crawler, targetSite, listResult.products(), counts);
 			if (stopPaging) {
-				log.info("Crawl cursor stopped: siteCode={} cursor={} reason=existing-product", site.code(),
-					cursorValue(cursor));
+				logCursorStopped(site, cursor, "existing-product");
 				return;
 			}
 			if (listResult.nextCursor() == null) {
-				log.info("Crawl cursor stopped: siteCode={} cursor={} reason=no-next-cursor", site.code(),
-					cursorValue(cursor));
+				logCursorStopped(site, cursor, "no-next-cursor");
 				return;
 			}
 			if (listResult.products().isEmpty()) {
-				log.info("Crawl cursor stopped: siteCode={} cursor={} reason=empty-page", site.code(),
-					cursorValue(cursor));
+				logCursorStopped(site, cursor, "empty-page");
 				return;
 			}
 			cursor = listResult.nextCursor();
@@ -151,18 +178,30 @@ public class CrawlRunService {
 		for (CrawledProductSummary summary : summaries) {
 			counts.foundCount++;
 			String sourceProductId = summary.ref().sourceProductId();
-			log.debug("Crawl product processing: siteCode={} sourceProductId={} detailUrl={}", site.code(),
-				sourceProductId, summary.ref().detailUrl());
+			log.atDebug()
+				.addKeyValue("event", "crawl.product.processing")
+				.addKeyValue("siteCode", site.code())
+				.addKeyValue("sourceProductId", sourceProductId)
+				.addKeyValue("detailUrl", summary.ref().detailUrl())
+				.log("crawl.product.processing");
 			var existingProduct = productRepository.findBySiteAndSourceProductId(site, summary.ref().sourceProductId());
 			if (existingProduct.isPresent() && !existingProduct.get().needsCrawlRepair()) {
-				log.info("Crawl product already exists: siteCode={} sourceProductId={} action=stop-paging",
-					site.code(), sourceProductId);
+				log.atInfo()
+					.addKeyValue("event", "crawl.product.skipped")
+					.addKeyValue("siteCode", site.code())
+					.addKeyValue("sourceProductId", sourceProductId)
+					.addKeyValue("reason", "already-exists")
+					.addKeyValue("action", "stop-paging")
+					.log("crawl.product.skipped");
 				return true;
 			}
 			try {
 				if (existingProduct.isPresent()) {
-					log.info("Crawl product repair started: siteCode={} sourceProductId={}", site.code(),
-						sourceProductId);
+					log.atInfo()
+						.addKeyValue("event", "crawl.product.repair.started")
+						.addKeyValue("siteCode", site.code())
+						.addKeyValue("sourceProductId", sourceProductId)
+						.log("crawl.product.repair.started");
 				}
 				delayBeforeRequest(site.code(), "detail", sourceProductId);
 				CrawledProductDetail detail = crawler.fetchDetail(targetSite, summary.ref());
@@ -175,24 +214,25 @@ public class CrawlRunService {
 				replaceMeasurements(savedProduct, detail);
 				if (exists) {
 					counts.updatedCount++;
-					log.info("Crawl product saved: siteCode={} sourceProductId={} action=updated name=\"{}\" price={} stockStatus={} measurementCount={}",
-						site.code(), sourceProductId, firstText(detail.name(), summary.name()), detail.originalPrice(),
-						detail.availability(), measurementCount(detail));
+					logProductSaved(site, sourceProductId, "updated", detail, summary);
 					return true;
 				}
 				else {
 					counts.createdCount++;
-					log.info("Crawl product saved: siteCode={} sourceProductId={} action=created name=\"{}\" price={} stockStatus={} measurementCount={}",
-						site.code(), sourceProductId, firstText(detail.name(), summary.name()), detail.originalPrice(),
-						detail.availability(), measurementCount(detail));
+					logProductSaved(site, sourceProductId, "created", detail, summary);
 				}
 			}
 			catch (RuntimeException exception) {
 				counts.failedCount++;
 				String failureMessage = failureMessage(exception);
 				counts.failureReasons.add(sourceProductId + ": " + failureMessage);
-				log.warn("Crawl product failed: siteCode={} sourceProductId={} reason={}", site.code(),
-					sourceProductId, failureMessage, exception);
+				log.atWarn()
+					.setCause(exception)
+					.addKeyValue("event", "crawl.product.failed")
+					.addKeyValue("siteCode", site.code())
+					.addKeyValue("sourceProductId", sourceProductId)
+					.addKeyValue("reason", failureMessage)
+					.log("crawl.product.failed");
 			}
 		}
 		return false;
@@ -216,9 +256,37 @@ public class CrawlRunService {
 		if (requestDelay == null || requestDelay.isZero() || requestDelay.isNegative()) {
 			return;
 		}
-		log.debug("Crawl request delay: siteCode={} requestType={} target={} delayMs={}", siteCode, requestType,
-			target, requestDelay.toMillis());
+		log.atDebug()
+			.addKeyValue("event", "crawl.request.delay")
+			.addKeyValue("siteCode", siteCode)
+			.addKeyValue("requestType", requestType)
+			.addKeyValue("target", target)
+			.addKeyValue("delayMs", requestDelay.toMillis())
+			.log("crawl.request.delay");
 		requestSleeper.sleep(requestDelay);
+	}
+
+	private void logCursorStopped(CrawlSiteEntity site, CrawlCursor cursor, String reason) {
+		log.atInfo()
+			.addKeyValue("event", "crawl.cursor.stopped")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("cursor", cursorValue(cursor))
+			.addKeyValue("reason", reason)
+			.log("crawl.cursor.stopped");
+	}
+
+	private void logProductSaved(CrawlSiteEntity site, String sourceProductId, String action,
+			CrawledProductDetail detail, CrawledProductSummary summary) {
+		log.atInfo()
+			.addKeyValue("event", "crawl.product.saved")
+			.addKeyValue("siteCode", site.code())
+			.addKeyValue("sourceProductId", sourceProductId)
+			.addKeyValue("action", action)
+			.addKeyValue("name", firstText(detail.name(), summary.name()))
+			.addKeyValue("price", detail.originalPrice())
+			.addKeyValue("stockStatus", detail.availability())
+			.addKeyValue("measurementCount", measurementCount(detail))
+			.log("crawl.product.saved");
 	}
 
 	private void validateProduct(CrawledProductDetail detail, CrawledProductSummary summary) {
