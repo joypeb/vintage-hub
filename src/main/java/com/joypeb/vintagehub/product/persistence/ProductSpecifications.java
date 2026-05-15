@@ -1,6 +1,7 @@
 package com.joypeb.vintagehub.product.persistence;
 
 import com.joypeb.vintagehub.product.application.ProductSearchCondition;
+import com.joypeb.vintagehub.product.application.ProductSearchCondition.MeasurementFilter;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.Predicate;
@@ -62,21 +63,29 @@ public final class ProductSpecifications {
 		if (!hasMeasurementFilter(condition)) {
 			return;
 		}
-		Join<ProductEntity, ProductMeasurementEntity> measurement = root.join("measurements");
-		if (hasText(condition.measurementPart())) {
-			predicates.add(criteriaBuilder.equal(measurement.get("part"), condition.measurementPart()));
-		}
-		if (condition.minMeasurement() != null) {
-			predicates.add(criteriaBuilder.greaterThanOrEqualTo(measurement.get("valueCm"), condition.minMeasurement()));
-		}
-		if (condition.maxMeasurement() != null) {
-			predicates.add(criteriaBuilder.lessThanOrEqualTo(measurement.get("valueCm"), condition.maxMeasurement()));
+		for (MeasurementFilter filter : condition.measurementFilters()) {
+			if (!hasMeasurementFilter(filter)) {
+				continue;
+			}
+			Join<ProductEntity, ProductMeasurementEntity> measurement = root.join("measurements");
+			if (hasText(filter.part())) {
+				predicates.add(criteriaBuilder.equal(measurement.get("part"), filter.part()));
+			}
+			if (filter.minMeasurement() != null) {
+				predicates.add(criteriaBuilder.greaterThanOrEqualTo(measurement.get("valueCm"), filter.minMeasurement()));
+			}
+			if (filter.maxMeasurement() != null) {
+				predicates.add(criteriaBuilder.lessThanOrEqualTo(measurement.get("valueCm"), filter.maxMeasurement()));
+			}
 		}
 	}
 
 	private static boolean hasMeasurementFilter(ProductSearchCondition condition) {
-		return hasText(condition.measurementPart()) || condition.minMeasurement() != null
-			|| condition.maxMeasurement() != null;
+		return condition.measurementFilters().stream().anyMatch(ProductSpecifications::hasMeasurementFilter);
+	}
+
+	private static boolean hasMeasurementFilter(MeasurementFilter filter) {
+		return hasText(filter.part()) || filter.minMeasurement() != null || filter.maxMeasurement() != null;
 	}
 
 	private static boolean hasText(String value) {

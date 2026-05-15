@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @RestController
@@ -37,11 +38,64 @@ class ProductListController {
 			@RequestParam(required = false) String measurementPart,
 			@RequestParam(required = false) BigDecimal minMeasurement,
 			@RequestParam(required = false) BigDecimal maxMeasurement,
+			@RequestParam(required = false) List<String> measurementFilters,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size) {
 		ProductSearchCondition condition = new ProductSearchCondition(siteCode, standardCategory, standardSubCategory,
-			stockStatus, minPrice, maxPrice, measurementPart, minMeasurement, maxMeasurement);
+			stockStatus, minPrice, maxPrice,
+			parseMeasurementFilters(measurementFilters, measurementPart, minMeasurement, maxMeasurement));
 		return ApiResponse.success(productSearchService.search(condition, page, size));
+	}
+
+	private static List<ProductSearchCondition.MeasurementFilter> parseMeasurementFilters(List<String> measurementFilters,
+			String measurementPart, BigDecimal minMeasurement, BigDecimal maxMeasurement) {
+		List<ProductSearchCondition.MeasurementFilter> filters = new ArrayList<>();
+		if (measurementFilters != null) {
+			for (String measurementFilter : measurementFilters) {
+				filters.add(parseMeasurementFilter(measurementFilter));
+			}
+		}
+		if (hasMeasurementFilter(measurementPart, minMeasurement, maxMeasurement)) {
+			filters.add(new ProductSearchCondition.MeasurementFilter(measurementPart, minMeasurement, maxMeasurement));
+		}
+		return filters;
+	}
+
+	private static ProductSearchCondition.MeasurementFilter parseMeasurementFilter(String measurementFilter) {
+		if (!hasText(measurementFilter)) {
+			throw new IllegalArgumentException("measurementFilters는 비어 있을 수 없습니다.");
+		}
+		String[] tokens = measurementFilter.split(":", -1);
+		if (tokens.length > 3) {
+			throw new IllegalArgumentException("measurementFilters는 '부위:최솟값:최댓값' 형식이어야 합니다.");
+		}
+		String part = tokens[0].trim();
+		if (!hasText(part)) {
+			throw new IllegalArgumentException("measurementFilters의 부위명은 비어 있을 수 없습니다.");
+		}
+		BigDecimal min = tokens.length >= 2 ? parseMeasurementValue(tokens[1], measurementFilter) : null;
+		BigDecimal max = tokens.length == 3 ? parseMeasurementValue(tokens[2], measurementFilter) : null;
+		return new ProductSearchCondition.MeasurementFilter(part, min, max);
+	}
+
+	private static BigDecimal parseMeasurementValue(String value, String measurementFilter) {
+		if (!hasText(value)) {
+			return null;
+		}
+		try {
+			return new BigDecimal(value.trim());
+		}
+		catch (NumberFormatException exception) {
+			throw new IllegalArgumentException("measurementFilters의 실측값은 숫자여야 합니다: " + measurementFilter);
+		}
+	}
+
+	private static boolean hasMeasurementFilter(String part, BigDecimal minMeasurement, BigDecimal maxMeasurement) {
+		return hasText(part) || minMeasurement != null || maxMeasurement != null;
+	}
+
+	private static boolean hasText(String value) {
+		return value != null && !value.isBlank();
 	}
 
 	@GetMapping("/{siteCode}/{sourceProductId}")

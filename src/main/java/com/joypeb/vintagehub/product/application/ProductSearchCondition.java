@@ -3,6 +3,7 @@ package com.joypeb.vintagehub.product.application;
 import com.joypeb.vintagehub.crawl.domain.ProductAvailability;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public record ProductSearchCondition(
 	String siteCode,
@@ -11,8 +12,17 @@ public record ProductSearchCondition(
 	ProductAvailability stockStatus,
 	BigDecimal minPrice,
 	BigDecimal maxPrice,
-	String measurementPart,
-	BigDecimal minMeasurement,
-	BigDecimal maxMeasurement
+	List<MeasurementFilter> measurementFilters
 ) {
+
+	public ProductSearchCondition {
+		measurementFilters = measurementFilters == null ? List.of() : List.copyOf(measurementFilters);
+	}
+
+	public record MeasurementFilter(
+		String part,
+		BigDecimal minMeasurement,
+		BigDecimal maxMeasurement
+	) {
+	}
 }

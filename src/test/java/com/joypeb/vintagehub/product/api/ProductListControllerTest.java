@@ -121,6 +121,38 @@ class ProductListControllerTest {
 			.andExpect(jsonPath("$.data.totalElements").value(1));
 	}
 
+	@Test
+	void listProductsAppliesMultipleMeasurementFilters() throws Exception {
+		CrawlSiteEntity site = crawlSiteRepository.save(
+			CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60)
+		);
+		ProductEntity matched = saveProduct(site, "matched-pants", "조건에 맞는 팬츠", new BigDecimal("55000"),
+			new BigDecimal("43000"), ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T01:00:00Z"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(matched, "허리", new BigDecimal("45.00"), "허리 45cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(matched, "허벅지", new BigDecimal("32.00"), "허벅지 32cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(matched, "밑단", new BigDecimal("25.00"), "밑단 25cm"));
+		ProductEntity smallThigh = saveProduct(site, "small-thigh-pants", "허벅지가 작은 팬츠", new BigDecimal("45000"),
+			null, ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T02:00:00Z"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(smallThigh, "허리", new BigDecimal("45.00"), "허리 45cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(smallThigh, "허벅지", new BigDecimal("28.00"), "허벅지 28cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(smallThigh, "밑단", new BigDecimal("25.00"), "밑단 25cm"));
+		ProductEntity wideHem = saveProduct(site, "wide-hem-pants", "밑단이 큰 팬츠", new BigDecimal("45000"),
+			null, ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T03:00:00Z"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(wideHem, "허리", new BigDecimal("45.00"), "허리 45cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(wideHem, "허벅지", new BigDecimal("32.00"), "허벅지 32cm"));
+		measurementRepository.save(ProductMeasurementEntity.automatic(wideHem, "밑단", new BigDecimal("35.00"), "밑단 35cm"));
+
+		mockMvc.perform(get("/api/products")
+				.param("measurementFilters", "허리:40:50", "허벅지:30", "밑단:20:30")
+				.param("page", "0")
+				.param("size", "10"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.content.length()").value(1))
+			.andExpect(jsonPath("$.data.content[0].sourceProductId").value("matched-pants"))
+			.andExpect(jsonPath("$.data.totalElements").value(1));
+	}
+
 	private ProductEntity saveProduct(CrawlSiteEntity site, String sourceProductId, String name, BigDecimal originalPrice,
 			BigDecimal salePrice, ProductAvailability availability, String sourceCategoryName, Instant collectedAt) {
 		CrawledProductRef ref = new CrawledProductRef(sourceProductId,

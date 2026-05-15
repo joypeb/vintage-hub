@@ -42,9 +42,7 @@ public class ProductSearchService {
 			.addKeyValue("stockStatus", condition.stockStatus())
 			.addKeyValue("minPrice", condition.minPrice())
 			.addKeyValue("maxPrice", condition.maxPrice())
-			.addKeyValue("measurementPart", condition.measurementPart())
-			.addKeyValue("minMeasurement", condition.minMeasurement())
-			.addKeyValue("maxMeasurement", condition.maxMeasurement())
+			.addKeyValue("measurementFilters", condition.measurementFilters())
 			.log("product.search.started");
 		Page<ProductListItem> products = productRepository.findAll(ProductSpecifications.by(condition), pageable)
 			.map(ProductListItem::from);

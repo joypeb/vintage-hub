@@ -245,16 +245,17 @@ GET /api/products
 | `stockStatus` | string enum | N | 없음 | 재고 상태. `AVAILABLE`, `SOLD_OUT`, `UNKNOWN`, `CHECK_FAILED` |
 | `minPrice` | number | N | 없음 | 표시 가격 최솟값. `salePrice`가 있으면 `salePrice`, 없으면 `originalPrice` 기준 |
 | `maxPrice` | number | N | 없음 | 표시 가격 최댓값 |
-| `measurementPart` | string | N | 없음 | 실측 부위명. 예: `허리`, `허벅지` |
-| `minMeasurement` | number | N | 없음 | 실측값 최솟값, 단위 cm |
-| `maxMeasurement` | number | N | 없음 | 실측값 최댓값, 단위 cm |
+| `measurementFilters` | string[] | N | 없음 | 다중 실측 조건. 같은 이름의 파라미터를 반복 지정하며 `부위:최솟값:최댓값` 형식. 예: `허리:40:50`, `허벅지:30`, `밑단:20:30`. 여러 조건은 모두 만족해야 한다. |
+| `measurementPart` | string | N | 없음 | 하위 호환용 단일 실측 부위명. 예: `허리`, `허벅지` |
+| `minMeasurement` | number | N | 없음 | 하위 호환용 단일 실측값 최솟값, 단위 cm |
+| `maxMeasurement` | number | N | 없음 | 하위 호환용 단일 실측값 최댓값, 단위 cm |
 | `page` | integer | N | `0` | 0부터 시작하는 페이지 번호 |
 | `size` | integer | N | `20` | 페이지 크기. 1 미만이면 20으로 보정, 100 초과면 100으로 제한 |
 
 ### 요청 예시
 
 ```http
-GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCategory=팬츠&stockStatus=AVAILABLE&minPrice=40000&maxPrice=45000&measurementPart=허리&minMeasurement=40&maxMeasurement=44&page=0&size=10
+GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCategory=팬츠&stockStatus=AVAILABLE&minPrice=40000&maxPrice=45000&measurementFilters=허리:40:50&measurementFilters=허벅지:30&measurementFilters=밑단:20:30&page=0&size=10
 ```
 
 ### 성공 응답
