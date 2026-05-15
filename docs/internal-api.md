@@ -52,9 +52,158 @@
 | --- | --- | --- | --- |
 | 400 | `ERROR_001` | 잘못된 요청입니다. | `IllegalArgumentException` 발생 |
 | 404 | `ERROR_002` | 요청한 리소스를 찾을 수 없습니다. | `ResourceNotFoundException` 발생 |
+| 401 | `ERROR_003` | 인증이 필요합니다. | 관리자 로그인 실패, 관리자 JWT 누락/만료/검증 실패 |
+| 403 | `ERROR_004` | 권한이 부족합니다. | 권한 부족 또는 비밀번호 해시 생성 API 비활성화 |
 | 500 | `ERROR_999` | 서버 내부 오류입니다. | 처리되지 않은 예외 발생 |
 
-## 1. 상품 목록 조회
+## 관리자 인증
+
+관리자 API는 JWT Bearer 인증을 사용한다.
+
+- 인증 헤더: `Authorization: Bearer {accessToken}`
+- 보호 대상: `/api/admin/**`
+- 공개 예외: `POST /api/admin/auth/login`, `POST /api/admin/auth/password-hash`
+- 관리자 계정은 회원가입 API로 생성하지 않고 `admin_user` 테이블에 사전 발급한다.
+- 비밀번호 해시 생성 API는 `VINTAGE_HUB_ADMIN_PASSWORD_HASH_API_ENABLED=true`일 때만 사용한다.
+
+### 관리자 계정 테이블
+
+관리자 계정은 `admin_user` 테이블에 저장한다. `password_hash`에는 비밀번호 원문이 아니라 `POST /api/admin/auth/password-hash`로 생성한 해시 값을 저장한다.
+
+| 컬럼 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `id` | bigint | Y | 관리자 계정 ID |
+| `username` | varchar(100) | Y | 관리자 로그인 ID. 유니크 |
+| `password_hash` | varchar(255) | Y | Spring Security PasswordEncoder 해시 값 |
+| `enabled` | boolean | Y | 로그인 가능 여부. `false`면 로그인 실패 |
+| `created_at` | timestamptz | Y | 생성 시각 |
+| `updated_at` | timestamptz | Y | 수정 시각 |
+
+예시:
+
+```sql
+insert into admin_user (username, password_hash, enabled, created_at, updated_at)
+values ('admin', '{bcrypt}$2a$10$...', true, now(), now());
+```
+
+### 관리자 인증 설정
+
+| 설정 | 환경 변수 | 기본값 | 설명 |
+| --- | --- | --- | --- |
+| `vintage-hub.admin.password-hash-api-enabled` | `VINTAGE_HUB_ADMIN_PASSWORD_HASH_API_ENABLED` | `false` | 비밀번호 해시 생성 API 활성화 여부 |
+| `vintage-hub.jwt.secret` | `VINTAGE_HUB_JWT_SECRET` | 빈 값 | JWT HS256 서명 키 |
+| `vintage-hub.jwt.access-token-validity-seconds` | `VINTAGE_HUB_JWT_ACCESS_TOKEN_VALIDITY_SECONDS` | `1800` | access token 유효 시간(초) |
+
+## 1. 관리자 로그인
+
+관리자 계정으로 로그인하고 관리자 API 호출에 사용할 JWT access token을 발급한다.
+
+### 요청
+
+```http
+POST /api/admin/auth/login
+```
+
+### Request Body
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `username` | string | Y | 관리자 로그인 ID |
+| `password` | string | Y | 관리자 비밀번호 원문 |
+
+### 요청 예시
+
+```json
+{
+  "username": "admin",
+  "password": "admin-secret"
+}
+```
+
+### 성공 응답
+
+- HTTP Status: `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "tokenType": "Bearer",
+    "expiresIn": 1800
+  }
+}
+```
+
+### 오류 응답 예시
+
+- HTTP Status: `401 Unauthorized`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_003",
+    "description": "인증이 필요합니다.",
+    "message": "관리자 인증 정보가 올바르지 않습니다."
+  }
+}
+```
+
+## 2. 관리자 비밀번호 해시 생성
+
+관리자 계정 사전 발급을 위해 Spring Security `PasswordEncoder`가 사용하는 비밀번호 해시 값을 생성한다.
+운영 배포에서는 기본 비활성화 상태이며, 필요한 환경에서만 `VINTAGE_HUB_ADMIN_PASSWORD_HASH_API_ENABLED=true`로 켠다.
+
+### 요청
+
+```http
+POST /api/admin/auth/password-hash
+```
+
+### Request Body
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `password` | string | Y | 해시로 변환할 비밀번호 원문 |
+
+### 요청 예시
+
+```json
+{
+  "password": "new-admin-secret"
+}
+```
+
+### 성공 응답
+
+- HTTP Status: `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "passwordHash": "{bcrypt}$2a$10$..."
+  }
+}
+```
+
+### 오류 응답 예시
+
+- HTTP Status: `403 Forbidden`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_004",
+    "description": "권한이 부족합니다.",
+    "message": "비밀번호 해시 생성 API가 비활성화되어 있습니다."
+  }
+}
+```
+
+## 3. 상품 목록 조회
 
 상품 목록을 최신 수집순(`collectedAt` 내림차순)으로 조회한다.
 
@@ -144,7 +293,7 @@ GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCatego
 | `totalElements` | integer | N | 전체 상품 수 |
 | `totalPages` | integer | N | 전체 페이지 수 |
 
-## 2. 상품 상세 조회
+## 4. 상품 상세 조회
 
 사이트 코드와 원본 상품 ID로 상품 상세 정보를 조회한다.
 
@@ -249,14 +398,16 @@ GET /api/products/rocketsalad/521529
 }
 ```
 
-## 3. 관리자 수동 크롤 실행 요청
+## 5. 관리자 수동 크롤 실행 요청
 
 지정한 사이트의 수동 크롤을 실행한다. 현재 구현은 비동기 작업 ID를 반환하지 않고, 서비스가 크롤 수행 후 집계 결과를 `202 Accepted`로 반환한다.
+JWT Bearer 인증이 필요하다.
 
 ### 요청
 
 ```http
 POST /api/admin/crawl-sites/{siteCode}/crawl-runs
+Authorization: Bearer {accessToken}
 ```
 
 ### Path Parameters
@@ -273,6 +424,7 @@ POST /api/admin/crawl-sites/{siteCode}/crawl-runs
 
 ```http
 POST /api/admin/crawl-sites/rocketsalad/crawl-runs
+Authorization: Bearer {accessToken}
 ```
 
 ### 성공 응답

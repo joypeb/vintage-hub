@@ -1,5 +1,7 @@
 package com.joypeb.vintagehub.common.api;
 
+import com.joypeb.vintagehub.auth.InvalidAdminCredentialsException;
+import com.joypeb.vintagehub.auth.PasswordHashApiDisabledException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -18,6 +20,18 @@ class GlobalExceptionHandler {
 	ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(ResourceNotFoundException exception) {
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
 			.body(ApiResponse.error(ErrorCode.NOT_FOUND, exception.getMessage()));
+	}
+
+	@ExceptionHandler(InvalidAdminCredentialsException.class)
+	ResponseEntity<ApiResponse<Void>> handleInvalidAdminCredentialsException(InvalidAdminCredentialsException exception) {
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+			.body(ApiResponse.error(ErrorCode.UNAUTHORIZED, exception.getMessage()));
+	}
+
+	@ExceptionHandler(PasswordHashApiDisabledException.class)
+	ResponseEntity<ApiResponse<Void>> handlePasswordHashApiDisabledException(PasswordHashApiDisabledException exception) {
+		return ResponseEntity.status(HttpStatus.FORBIDDEN)
+			.body(ApiResponse.error(ErrorCode.FORBIDDEN, exception.getMessage()));
 	}
 
 	@ExceptionHandler(Exception.class)
