@@ -3,6 +3,7 @@
 이 문서는 현재 백엔드 코드에 존재하는 API를 기준으로 작성한 내부 명세서이다.
 
 - Base URL: 환경별 호스트 기준
+  - local 기준 http://localhost:8080
 - Content-Type: `application/json`
 - 날짜/시간: ISO-8601 UTC 문자열, 예: `2026-05-15T01:00:00Z`
 - 금액/실측값: JSON number로 응답되며 Java 타입은 `BigDecimal`
@@ -316,7 +317,104 @@ GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCatego
 | `totalElements` | integer | N | 전체 상품 수 |
 | `totalPages` | integer | N | 전체 페이지 수 |
 
-## 4. 상품 상세 조회
+## 4. 상품 필터 옵션 조회
+
+프론트엔드의 상품 검색 필터 구성을 위해 현재 상품 데이터에 실제로 존재하는 사이트, 표준 카테고리, 실측 부위 목록을 조회한다.
+
+- 상품이 1개 이상 있는 사이트만 응답한다.
+- `standardCategory`, `standardSubCategory`, 실측 `part`가 `null`이거나 빈 문자열인 값은 제외한다.
+- 카테고리는 대분류 기준 상품 수 내림차순, 이름 오름차순으로 정렬한다.
+- 사이트는 상품 수 내림차순, 사이트 코드 오름차순으로 정렬한다.
+- 실측 부위는 부위명 오름차순으로 정렬한다.
+
+### 요청
+
+```http
+GET /api/products/filter-options
+```
+
+### 성공 응답
+
+- HTTP Status: `200 OK`
+
+```json
+{
+  "success": true,
+  "data": {
+    "sites": [
+      {
+        "code": "rocketsalad",
+        "name": "로켓샐러드",
+        "productCount": 123
+      }
+    ],
+    "categories": [
+      {
+        "name": "하의",
+        "productCount": 50,
+        "subCategories": [
+          {
+            "name": "팬츠",
+            "productCount": 42
+          },
+          {
+            "name": "데님",
+            "productCount": 8
+          }
+        ]
+      },
+      {
+        "name": "상의",
+        "productCount": 40,
+        "subCategories": [
+          {
+            "name": "셔츠",
+            "productCount": 12
+          },
+          {
+            "name": "니트",
+            "productCount": 8
+          }
+        ]
+      }
+    ],
+    "measurements": [
+      {
+        "part": "가슴",
+        "productCount": 45
+      },
+      {
+        "part": "어깨",
+        "productCount": 31
+      },
+      {
+        "part": "허리",
+        "productCount": 28
+      }
+    ]
+  }
+}
+```
+
+### 응답 데이터 타입
+
+| 필드 | 타입 | Nullable | 설명 |
+| --- | --- | --- | --- |
+| `sites` | array | N | 상품이 존재하는 크롤링 사이트 목록 |
+| `sites[].code` | string | N | 사이트 코드. 상품 목록 조회의 `siteCode` 값으로 사용 |
+| `sites[].name` | string | N | 사이트 표시명 |
+| `sites[].productCount` | integer | N | 해당 사이트의 상품 수 |
+| `categories` | array | N | 상품이 존재하는 표준 대분류 목록 |
+| `categories[].name` | string | N | 표준 대분류명. 상품 목록 조회의 `standardCategory` 값으로 사용 |
+| `categories[].productCount` | integer | N | 해당 표준 대분류의 상품 수 |
+| `categories[].subCategories` | array | N | 해당 대분류 아래 상품이 존재하는 표준 중분류 목록 |
+| `categories[].subCategories[].name` | string | N | 표준 중분류명. 상품 목록 조회의 `standardSubCategory` 값으로 사용 |
+| `categories[].subCategories[].productCount` | integer | N | 해당 표준 중분류의 상품 수 |
+| `measurements` | array | N | 상품 실측에 실제로 존재하는 부위 목록 |
+| `measurements[].part` | string | N | 실측 부위명. `measurementFilters` 또는 `measurementPart` 값으로 사용 |
+| `measurements[].productCount` | integer | N | 해당 실측 부위를 가진 상품 수 |
+
+## 5. 상품 상세 조회
 
 사이트 코드와 원본 상품 ID로 상품 상세 정보를 조회한다.
 
@@ -421,7 +519,7 @@ GET /api/products/rocketsalad/521529
 }
 ```
 
-## 5. 관리자 수동 크롤 실행 요청
+## 6. 관리자 수동 크롤 실행 요청
 
 지정한 사이트의 수동 크롤을 실행한다. 현재 구현은 비동기 작업 ID를 반환하지 않고, 서비스가 크롤 수행 후 집계 결과를 `202 Accepted`로 반환한다.
 JWT Bearer 인증이 필요하다.
@@ -496,7 +594,7 @@ Authorization: Bearer {accessToken}
 }
 ```
 
-## 6. 관리자 상품 품절 여부 수동 확인
+## 7. 관리자 상품 품절 여부 수동 확인
 
 지정한 상품의 원본 상세 페이지를 다시 확인하고 `stockStatus`, `availabilityCheckedAt`, 다음 확인 예정 시각을 갱신한다.
 JWT Bearer 인증이 필요하다.
