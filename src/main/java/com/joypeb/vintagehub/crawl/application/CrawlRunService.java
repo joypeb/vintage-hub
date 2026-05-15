@@ -73,6 +73,15 @@ public class CrawlRunService {
 
 	@Transactional
 	public CrawlRunResult requestManualRun(String siteCode) {
+		return requestRun(siteCode, CrawlRunEntity::manual);
+	}
+
+	@Transactional
+	public CrawlRunResult requestScheduledRun(String siteCode) {
+		return requestRun(siteCode, CrawlRunEntity::scheduled);
+	}
+
+	private CrawlRunResult requestRun(String siteCode, CrawlRunFactory runFactory) {
 		log.atInfo()
 			.addKeyValue("event", "crawl.run.started")
 			.addKeyValue("siteCode", siteCode)
@@ -81,7 +90,7 @@ public class CrawlRunService {
 		CrawlSiteEntity site = siteRepository.findByCode(siteCode)
 			.orElseThrow(() -> new IllegalArgumentException("Crawl site not found: " + siteCode));
 		SiteCrawler crawler = crawlerRegistry.requireBySiteCode(siteCode);
-		CrawlRunEntity run = runRepository.save(CrawlRunEntity.manual(site));
+		CrawlRunEntity run = runRepository.save(runFactory.create(site));
 		run.markRunning();
 
 		try {
@@ -112,6 +121,11 @@ public class CrawlRunService {
 				.log("crawl.run.failed");
 			throw exception;
 		}
+	}
+
+	@FunctionalInterface
+	private interface CrawlRunFactory {
+		CrawlRunEntity create(CrawlSiteEntity site);
 	}
 
 	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler) {

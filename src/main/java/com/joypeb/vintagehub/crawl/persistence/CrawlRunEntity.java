@@ -55,14 +55,18 @@ public class CrawlRunEntity {
 	protected CrawlRunEntity() {
 	}
 
-	private CrawlRunEntity(CrawlSiteEntity site) {
+	private CrawlRunEntity(CrawlSiteEntity site, CrawlTriggerType triggerType) {
 		this.site = site;
-		this.triggerType = CrawlTriggerType.MANUAL;
+		this.triggerType = triggerType;
 		this.status = CrawlRunStatus.PENDING;
 	}
 
 	public static CrawlRunEntity manual(CrawlSiteEntity site) {
-		return new CrawlRunEntity(site);
+		return new CrawlRunEntity(site, CrawlTriggerType.MANUAL);
+	}
+
+	public static CrawlRunEntity scheduled(CrawlSiteEntity site) {
+		return new CrawlRunEntity(site, CrawlTriggerType.SCHEDULED);
 	}
 
 	public void markRunning() {

@@ -116,7 +116,7 @@ class CrawlRunServiceTest {
 				tuple("shirt", "상의", "셔츠", new BigDecimal("0.950")),
 				tuple("pants", "하의", "팬츠", new BigDecimal("0.950")),
 				tuple("outer", "아우터", null, new BigDecimal("0.800")),
-				tuple("women", null, null, null)
+				tuple("women", "아우터", "자켓", new BigDecimal("0.800"))
 			);
 	}
 
@@ -438,7 +438,17 @@ class CrawlRunServiceTest {
 				case "shirt" -> detail(productRef, "Top (대) > 1/2 summershirt (중)");
 				case "pants" -> detail(productRef, "Pants (대) > military (중)");
 				case "outer" -> detail(productRef, "Outer (대) > western,hippie (중)");
-				case "women" -> detail(productRef, "Womancloth (대) > All Show (중)");
+				case "women" -> new CrawledProductDetail(
+					productRef,
+					"~70`s French Faded Chore Jacket For Women",
+					new BigDecimal("55000"),
+					null,
+					ProductAvailability.AVAILABLE,
+					"프렌치 워크웨어 초어 자켓 입니다.",
+					URI.create("https://www.rocketsalad.co.kr/shopimages/" + productRef.sourceProductId() + ".jpg"),
+					"Womancloth (대) > All Show (중)",
+					Map.of("가슴", "48", "기장", "61")
+				);
 				default -> throw new AssertionError("Unexpected product: " + productRef.sourceProductId());
 			};
 		}

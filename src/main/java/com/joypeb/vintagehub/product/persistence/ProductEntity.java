@@ -102,7 +102,7 @@ public class ProductEntity {
 		this.thumbnailImageUrl = detail.thumbnailImageUrl() == null ? null : detail.thumbnailImageUrl().toString();
 		this.sourceCategoryName = detail.sourceCategoryName();
 		ProductCategoryMapping.ProductCategoryMappingResult categoryMapping = ProductCategoryMapping.from(site.code(),
-			detail.sourceCategoryName());
+			detail.sourceCategoryName(), this.name, detail.description());
 		this.standardCategory = categoryMapping.standardCategory();
 		this.standardSubCategory = categoryMapping.standardSubCategory();
 		this.categoryConfidence = categoryMapping.categoryConfidence();

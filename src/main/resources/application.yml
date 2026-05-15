@@ -12,6 +12,12 @@ spring:
     enabled: true
 
 vintage-hub:
+  crawl:
+    schedule:
+      enabled: true
+      fixed-rate: 1h
+      site-codes:
+        - rocketsalad
   admin:
     password-hash-api-enabled: ${VINTAGE_HUB_ADMIN_PASSWORD_HASH_API_ENABLED:false}
   jwt:
