@@ -17,3 +17,13 @@ vintage-hub:
   jwt:
     secret: ${VINTAGE_HUB_JWT_SECRET:}
     access-token-validity-seconds: ${VINTAGE_HUB_JWT_ACCESS_TOKEN_VALIDITY_SECONDS:1800}
+  product:
+    availability-check:
+      enabled: true
+      fixed-rate: 10m
+      batch-size: 20
+      request-delay: 1s
+      available-ttl: 6h
+      sold-out-ttl: 7d
+      unknown-ttl: 1h
+      check-failed-ttl: 2h

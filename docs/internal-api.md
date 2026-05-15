@@ -473,6 +473,93 @@ Authorization: Bearer {accessToken}
 }
 ```
 
+## 6. 관리자 상품 품절 여부 수동 확인
+
+지정한 상품의 원본 상세 페이지를 다시 확인하고 `stockStatus`, `availabilityCheckedAt`, 다음 확인 예정 시각을 갱신한다.
+JWT Bearer 인증이 필요하다.
+
+### 요청
+
+```http
+POST /api/admin/products/{productId}/availability-check
+Authorization: Bearer {accessToken}
+```
+
+### Path Parameters
+
+| 이름 | 타입 | 필수 | 설명 |
+| --- | --- | --- | --- |
+| `productId` | integer | Y | 내부 상품 ID |
+
+### Request Body
+
+없음.
+
+### 요청 예시
+
+```http
+POST /api/admin/products/1/availability-check
+Authorization: Bearer {accessToken}
+```
+
+### 성공 응답
+
+- HTTP Status: `202 Accepted`
+
+```json
+{
+  "success": true,
+  "data": {
+    "checkedCount": 1,
+    "availableCount": 1,
+    "soldOutCount": 0,
+    "unknownCount": 0,
+    "failedCount": 0
+  }
+}
+```
+
+### 응답 데이터 타입
+
+| 필드 | 타입 | Nullable | 설명 |
+| --- | --- | --- | --- |
+| `checkedCount` | integer | N | 확인을 시도한 상품 수. 단일 상품 API에서는 보통 `1` |
+| `availableCount` | integer | N | 확인 결과 `AVAILABLE`인 상품 수 |
+| `soldOutCount` | integer | N | 확인 결과 `SOLD_OUT`인 상품 수 |
+| `unknownCount` | integer | N | 확인 결과 `UNKNOWN`인 상품 수 |
+| `failedCount` | integer | N | 확인 실패 또는 `CHECK_FAILED` 결과 상품 수 |
+
+### 오류 응답 예시
+
+- HTTP Status: `404 Not Found`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_002",
+    "description": "요청한 리소스를 찾을 수 없습니다.",
+    "message": "Product not found: 99"
+  }
+}
+```
+
+## 상품 품절 여부 배치 설정
+
+상품 품절 여부 배치는 `availability_next_check_at <= now()`인 상품만 오래된 확인 예정 시각순으로 조회해 처리한다.
+대량의 `AVAILABLE`, `SOLD_OUT` 상품이 쌓여도 전체 상품을 매번 순회하지 않고, 확인 예정 시각이 도래한 상품만 처리한다.
+
+| 설정                                                        | 기본값    | 설명                                    |
+|-----------------------------------------------------------|--------|---------------------------------------|
+| `vintage-hub.product.availability-check.enabled`          | `true` | 품절 여부 배치 활성화 여부                       |
+| `vintage-hub.product.availability-check.fixed-rate`       | `10m`  | 배치 실행 주기                              |
+| `vintage-hub.product.availability-check.batch-size`       | `20`   | 1회 배치에서 확인할 최대 상품 수                   |
+| `vintage-hub.product.availability-check.request-delay`    | `1s`   | 상품별 원본 사이트 요청 간격                      |
+| `vintage-hub.product.availability-check.available-ttl`    | `6h`   | `AVAILABLE` 확인 후 다음 확인까지의 간격          |
+| `vintage-hub.product.availability-check.sold-out-ttl`     | `7d`   | `SOLD_OUT` 확인 후 다음 확인까지의 간격           |
+| `vintage-hub.product.availability-check.unknown-ttl`      | `1h`   | `UNKNOWN` 확인 후 다음 확인까지의 간격            |
+| `vintage-hub.product.availability-check.check-failed-ttl` | `2h`   | 실패 또는 `CHECK_FAILED` 확인 후 다음 확인까지의 간격 |
+
 ## 참고 사항
 
 - 현재 OpenAPI JSON은 `GET /v3/api-docs`에서 제공된다.

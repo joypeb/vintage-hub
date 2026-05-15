@@ -78,6 +78,8 @@ public class ProductEntity {
 
 	private Instant availabilityCheckedAt;
 
+	private Instant availabilityNextCheckAt;
+
 	protected ProductEntity() {
 	}
 
@@ -107,6 +109,26 @@ public class ProductEntity {
 		this.collectedAt = collectedAt;
 		this.lastSeenAt = collectedAt;
 		this.availabilityCheckedAt = collectedAt;
+		this.availabilityNextCheckAt = collectedAt;
+	}
+
+	public void updateFrom(CrawledProductDetail detail, CrawledProductSummary summary, Instant collectedAt,
+			Instant nextAvailabilityCheckAt) {
+		updateFrom(detail, summary, collectedAt);
+		this.availabilityNextCheckAt = nextAvailabilityCheckAt;
+	}
+
+	public void markAvailabilityCheckSucceeded(ProductAvailability availability, Instant checkedAt,
+			Instant nextCheckAt) {
+		this.stockStatus = availability;
+		this.availabilityCheckedAt = checkedAt;
+		this.availabilityNextCheckAt = nextCheckAt;
+	}
+
+	public void markAvailabilityCheckFailed(Instant checkedAt, Instant nextCheckAt) {
+		this.stockStatus = ProductAvailability.CHECK_FAILED;
+		this.availabilityCheckedAt = checkedAt;
+		this.availabilityNextCheckAt = nextCheckAt;
 	}
 
 	public Long id() {
@@ -171,6 +193,10 @@ public class ProductEntity {
 
 	public Instant availabilityCheckedAt() {
 		return availabilityCheckedAt;
+	}
+
+	public Instant availabilityNextCheckAt() {
+		return availabilityNextCheckAt;
 	}
 
 	public boolean needsCrawlRepair() {
