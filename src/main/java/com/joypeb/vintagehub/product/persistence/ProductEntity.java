@@ -137,6 +137,10 @@ public class ProductEntity {
 		return stockStatus;
 	}
 
+	public String description() {
+		return description;
+	}
+
 	public String detailUrl() {
 		return detailUrl;
 	}
@@ -153,8 +157,20 @@ public class ProductEntity {
 		return standardSubCategory;
 	}
 
+	public BigDecimal categoryConfidence() {
+		return categoryConfidence;
+	}
+
 	public Instant collectedAt() {
 		return collectedAt;
+	}
+
+	public Instant lastSeenAt() {
+		return lastSeenAt;
+	}
+
+	public Instant availabilityCheckedAt() {
+		return availabilityCheckedAt;
 	}
 
 	public boolean needsCrawlRepair() {

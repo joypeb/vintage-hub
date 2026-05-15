@@ -9,4 +9,6 @@ import java.util.Optional;
 public interface ProductRepository extends JpaRepository<ProductEntity, Long>, JpaSpecificationExecutor<ProductEntity> {
 
 	Optional<ProductEntity> findBySiteAndSourceProductId(CrawlSiteEntity site, String sourceProductId);
+
+	Optional<ProductEntity> findBySiteCodeAndSourceProductId(String siteCode, String sourceProductId);
 }

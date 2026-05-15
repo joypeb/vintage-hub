@@ -14,6 +14,12 @@ class GlobalExceptionHandler {
 			.body(ApiResponse.error(ErrorCode.INVALID_REQUEST, exception.getMessage()));
 	}
 
+	@ExceptionHandler(ResourceNotFoundException.class)
+	ResponseEntity<ApiResponse<Void>> handleResourceNotFoundException(ResourceNotFoundException exception) {
+		return ResponseEntity.status(HttpStatus.NOT_FOUND)
+			.body(ApiResponse.error(ErrorCode.NOT_FOUND, exception.getMessage()));
+	}
+
 	@ExceptionHandler(Exception.class)
 	ResponseEntity<ApiResponse<Void>> handleException(Exception exception) {
 		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

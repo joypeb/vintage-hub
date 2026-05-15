@@ -1,5 +1,7 @@
 package com.joypeb.vintagehub.product.application;
 
+import com.joypeb.vintagehub.common.api.ResourceNotFoundException;
+import com.joypeb.vintagehub.product.persistence.ProductMeasurementRepository;
 import com.joypeb.vintagehub.product.persistence.ProductRepository;
 import com.joypeb.vintagehub.product.persistence.ProductSpecifications;
 import org.springframework.data.domain.PageRequest;
@@ -14,9 +16,11 @@ public class ProductSearchService {
 	private static final int MAX_PAGE_SIZE = 100;
 
 	private final ProductRepository productRepository;
+	private final ProductMeasurementRepository measurementRepository;
 
-	public ProductSearchService(ProductRepository productRepository) {
+	public ProductSearchService(ProductRepository productRepository, ProductMeasurementRepository measurementRepository) {
 		this.productRepository = productRepository;
+		this.measurementRepository = measurementRepository;
 	}
 
 	@Transactional(readOnly = true)
@@ -24,6 +28,15 @@ public class ProductSearchService {
 		Pageable pageable = PageRequest.of(page, normalizedSize(size), Sort.by(Sort.Direction.DESC, "collectedAt"));
 		return ProductListResult.from(productRepository.findAll(ProductSpecifications.by(condition), pageable)
 			.map(ProductListItem::from));
+	}
+
+	@Transactional(readOnly = true)
+	public ProductDetailResult getDetail(String siteCode, String sourceProductId) {
+		return productRepository.findBySiteCodeAndSourceProductId(siteCode, sourceProductId)
+			.map(product -> ProductDetailResult.from(product,
+				measurementRepository.findByProductIdOrderByIdAsc(product.id())))
+			.orElseThrow(() -> new ResourceNotFoundException(
+				"상품을 찾을 수 없습니다. siteCode=" + siteCode + ", sourceProductId=" + sourceProductId));
 	}
 
 	private int normalizedSize(int size) {

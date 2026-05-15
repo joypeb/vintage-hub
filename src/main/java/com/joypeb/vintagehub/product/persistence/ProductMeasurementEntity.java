@@ -67,4 +67,24 @@ public class ProductMeasurementEntity {
 	public String part() {
 		return part;
 	}
+
+	public BigDecimal valueCm() {
+		return valueCm;
+	}
+
+	public String rawText() {
+		return rawText;
+	}
+
+	public BigDecimal confidence() {
+		return confidence;
+	}
+
+	public MeasurementSource source() {
+		return source;
+	}
+
+	public Instant updatedAt() {
+		return updatedAt;
+	}
 }
