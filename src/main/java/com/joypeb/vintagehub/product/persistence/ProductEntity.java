@@ -93,9 +93,11 @@ public class ProductEntity {
 		this.detailUrl = detail.ref().detailUrl().toString();
 		this.thumbnailImageUrl = detail.thumbnailImageUrl() == null ? null : detail.thumbnailImageUrl().toString();
 		this.sourceCategoryName = detail.sourceCategoryName();
-		this.standardCategory = null;
-		this.standardSubCategory = null;
-		this.categoryConfidence = null;
+		ProductCategoryMapping.ProductCategoryMappingResult categoryMapping = ProductCategoryMapping.from(site.code(),
+			detail.sourceCategoryName());
+		this.standardCategory = categoryMapping.standardCategory();
+		this.standardSubCategory = categoryMapping.standardSubCategory();
+		this.categoryConfidence = categoryMapping.categoryConfidence();
 		this.collectedAt = collectedAt;
 		this.lastSeenAt = collectedAt;
 		this.availabilityCheckedAt = collectedAt;

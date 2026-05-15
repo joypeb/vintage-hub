@@ -31,6 +31,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -83,6 +84,40 @@ class CrawlRunServiceTest {
 		verify(measurementRepository).saveAll(measurementCaptor.capture());
 		assertThat(measurementCaptor.getValue()).extracting(ProductMeasurementEntity::part)
 			.containsExactlyInAnyOrder("허리", "기장");
+	}
+
+	@Test
+	void requestManualRunStoresRocketSaladStandardCategories() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		RocketSaladCategoryCrawler crawler = new RocketSaladCategoryCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(any(), any())).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.requestManualRun("rocketsalad");
+
+		ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+		verify(productRepository, times(4)).save(productCaptor.capture());
+		assertThat(productCaptor.getAllValues())
+			.extracting("sourceProductId", "standardCategory", "standardSubCategory", "categoryConfidence")
+			.containsExactly(
+				tuple("shirt", "상의", "셔츠", new BigDecimal("0.950")),
+				tuple("pants", "하의", "팬츠", new BigDecimal("0.950")),
+				tuple("outer", "아우터", null, new BigDecimal("0.800")),
+				tuple("women", null, null, null)
+			);
 	}
 
 	@Test
@@ -380,6 +415,40 @@ class CrawlRunServiceTest {
 		}
 	}
 
+	private static class RocketSaladCategoryCrawler implements SiteCrawler {
+
+		@Override
+		public String siteCode() {
+			return "rocketsalad";
+		}
+
+		@Override
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+			return new CrawlListResult(List.of(
+				summary("shirt"),
+				summary("pants"),
+				summary("outer"),
+				summary("women")
+			), null);
+		}
+
+		@Override
+		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+			return switch (productRef.sourceProductId()) {
+				case "shirt" -> detail(productRef, "Top (대) > 1/2 summershirt (중)");
+				case "pants" -> detail(productRef, "Pants (대) > military (중)");
+				case "outer" -> detail(productRef, "Outer (대) > western,hippie (중)");
+				case "women" -> detail(productRef, "Womancloth (대) > All Show (중)");
+				default -> throw new AssertionError("Unexpected product: " + productRef.sourceProductId());
+			};
+		}
+
+		@Override
+		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
+			return ProductAvailability.AVAILABLE;
+		}
+	}
+
 	private static class FailingDetailCrawler implements SiteCrawler {
 
 		@Override
@@ -488,6 +557,20 @@ class CrawlRunServiceTest {
 			"Size: 허리 44cm 기장 51cm",
 			URI.create("https://www.rocketsalad.co.kr/shopimages/" + productRef.sourceProductId() + ".jpg"),
 			"Pants > casual",
+			Map.of("허리", "44", "기장", "51")
+		);
+	}
+
+	private static CrawledProductDetail detail(CrawledProductRef productRef, String sourceCategoryName) {
+		return new CrawledProductDetail(
+			productRef,
+			productRef.sourceProductId(),
+			new BigDecimal("55000"),
+			null,
+			ProductAvailability.AVAILABLE,
+			"Size: 허리 44cm 기장 51cm",
+			URI.create("https://www.rocketsalad.co.kr/shopimages/" + productRef.sourceProductId() + ".jpg"),
+			sourceCategoryName,
 			Map.of("허리", "44", "기장", "51")
 		);
 	}
