@@ -22,6 +22,7 @@ vintage-hub:
       enabled: true
       fixed-rate: 10m
       batch-size: 20
+      max-parallel-sites: 3
       request-delay: 1s
       available-ttl: 6h
       sold-out-ttl: 7d

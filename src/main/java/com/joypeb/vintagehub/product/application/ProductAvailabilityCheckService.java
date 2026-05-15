@@ -19,7 +19,12 @@ import java.net.URI;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 @Service
 public class ProductAvailabilityCheckService {
@@ -58,26 +63,76 @@ public class ProductAvailabilityCheckService {
 		return checkProducts(List.of(product));
 	}
 
-	@Transactional
 	public ProductAvailabilityCheckResult checkDueProducts() {
 		return checkDueProducts(properties.batchSize());
 	}
 
-	@Transactional
 	public ProductAvailabilityCheckResult checkDueProducts(int batchSize) {
 		int resolvedBatchSize = Math.max(batchSize, 1);
+		Instant now = Instant.now(clock);
 		log.atDebug()
 			.addKeyValue("event", "product.availability.due.search.started")
 			.addKeyValue("batchSize", resolvedBatchSize)
 			.log("product.availability.due.search.started");
-		List<ProductEntity> products = productRepository.findDueForAvailabilityCheck(Instant.now(clock),
-			PageRequest.of(0, resolvedBatchSize));
+		List<String> siteCodes = productRepository.findDueSiteCodesForAvailabilityCheck(now);
 		log.atInfo()
 			.addKeyValue("event", "product.availability.due.search.completed")
 			.addKeyValue("batchSize", resolvedBatchSize)
-			.addKeyValue("productCount", products.size())
+			.addKeyValue("siteCount", siteCodes.size())
 			.log("product.availability.due.search.completed");
+		return checkDueProductsBySite(siteCodes, now, resolvedBatchSize);
+	}
+
+	private ProductAvailabilityCheckResult checkDueProductsBySite(List<String> siteCodes, Instant now, int batchSize) {
+		if (siteCodes.isEmpty()) {
+			return new ProductAvailabilityCheckResult(0, 0, 0, 0, 0);
+		}
+		int parallelism = Math.min(properties.maxParallelSites(), siteCodes.size());
+		ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+		try {
+			List<Future<ProductAvailabilityCheckResult>> futures = new ArrayList<>();
+			for (String siteCode : siteCodes) {
+				futures.add(executor.submit(() -> checkDueProductsForSite(siteCode, now, batchSize)));
+			}
+			return aggregate(futures);
+		}
+		finally {
+			executor.shutdown();
+		}
+	}
+
+	private ProductAvailabilityCheckResult checkDueProductsForSite(String siteCode, Instant now, int batchSize) {
+		List<ProductEntity> products = productRepository.findDueForAvailabilityCheckBySiteCode(siteCode, now,
+			PageRequest.of(0, batchSize));
+		log.atInfo()
+			.addKeyValue("event", "product.availability.site.due.search.completed")
+			.addKeyValue("siteCode", siteCode)
+			.addKeyValue("batchSize", batchSize)
+			.addKeyValue("productCount", products.size())
+			.log("product.availability.site.due.search.completed");
 		return checkProducts(products);
+	}
+
+	private ProductAvailabilityCheckResult aggregate(List<Future<ProductAvailabilityCheckResult>> futures) {
+		AvailabilityCheckCounts counts = new AvailabilityCheckCounts();
+		for (Future<ProductAvailabilityCheckResult> future : futures) {
+			ProductAvailabilityCheckResult result = await(future);
+			counts.add(result);
+		}
+		return counts.toResult();
+	}
+
+	private ProductAvailabilityCheckResult await(Future<ProductAvailabilityCheckResult> future) {
+		try {
+			return future.get();
+		}
+		catch (InterruptedException exception) {
+			Thread.currentThread().interrupt();
+			throw new IllegalStateException("Product availability check interrupted", exception);
+		}
+		catch (ExecutionException exception) {
+			throw new IllegalStateException("Product availability site batch failed", exception.getCause());
+		}
 	}
 
 	private ProductAvailabilityCheckResult checkProducts(List<ProductEntity> products) {
@@ -193,6 +248,14 @@ public class ProductAvailabilityCheckService {
 		private void recordFailure() {
 			checkedCount++;
 			failedCount++;
+		}
+
+		private void add(ProductAvailabilityCheckResult result) {
+			checkedCount += result.checkedCount();
+			availableCount += result.availableCount();
+			soldOutCount += result.soldOutCount();
+			unknownCount += result.unknownCount();
+			failedCount += result.failedCount();
 		}
 
 		private ProductAvailabilityCheckResult toResult() {

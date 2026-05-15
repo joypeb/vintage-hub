@@ -71,22 +71,32 @@ class ProductAvailabilityCheckServiceTest {
 	}
 
 	@Test
-	void checkDueProductsUsesRepositorySelectedProducts() {
+	void checkDueProductsUsesPerSiteRepositorySelectedProducts() {
 		ProductRepository productRepository = mock(ProductRepository.class);
-		ProductEntity dueProduct = product("due", ProductAvailability.UNKNOWN);
-		when(productRepository.findDueForAvailabilityCheck(NOW, PageRequest.of(0, 3)))
-			.thenReturn(List.of(dueProduct));
+		ProductEntity firstSiteProduct = product("rocketsalad", "due-1", ProductAvailability.UNKNOWN);
+		ProductEntity secondSiteProduct = product("tokyoused", "due-2", ProductAvailability.UNKNOWN);
+		when(productRepository.findDueSiteCodesForAvailabilityCheck(NOW))
+			.thenReturn(List.of("rocketsalad", "tokyoused"));
+		when(productRepository.findDueForAvailabilityCheckBySiteCode("rocketsalad", NOW, PageRequest.of(0, 3)))
+			.thenReturn(List.of(firstSiteProduct));
+		when(productRepository.findDueForAvailabilityCheckBySiteCode("tokyoused", NOW, PageRequest.of(0, 3)))
+			.thenReturn(List.of(secondSiteProduct));
 		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
-		ProductAvailabilityCheckService service = service(productRepository,
-			new AvailabilityCrawler(Map.of("due", ProductAvailability.SOLD_OUT)));
+		ProductAvailabilityCheckService service = service(productRepository, List.of(
+			new AvailabilityCrawler("rocketsalad", Map.of("due-1", ProductAvailability.SOLD_OUT)),
+			new AvailabilityCrawler("tokyoused", Map.of("due-2", ProductAvailability.AVAILABLE))
+		));
 
 		ProductAvailabilityCheckResult result = service.checkDueProducts(3);
 
-		assertThat(result.checkedCount()).isEqualTo(1);
+		assertThat(result.checkedCount()).isEqualTo(2);
 		assertThat(result.soldOutCount()).isEqualTo(1);
-		assertThat(dueProduct.stockStatus()).isEqualTo(ProductAvailability.SOLD_OUT);
-		assertThat(dueProduct.availabilityNextCheckAt()).isEqualTo(NOW.plus(Duration.ofDays(7)));
-		verify(productRepository).findDueForAvailabilityCheck(NOW, PageRequest.of(0, 3));
+		assertThat(result.availableCount()).isEqualTo(1);
+		assertThat(firstSiteProduct.stockStatus()).isEqualTo(ProductAvailability.SOLD_OUT);
+		assertThat(secondSiteProduct.stockStatus()).isEqualTo(ProductAvailability.AVAILABLE);
+		verify(productRepository).findDueSiteCodesForAvailabilityCheck(NOW);
+		verify(productRepository).findDueForAvailabilityCheckBySiteCode("rocketsalad", NOW, PageRequest.of(0, 3));
+		verify(productRepository).findDueForAvailabilityCheckBySiteCode("tokyoused", NOW, PageRequest.of(0, 3));
 	}
 
 	@Test
@@ -114,7 +124,9 @@ class ProductAvailabilityCheckServiceTest {
 		ProductEntity soldOut = product("sold-out", ProductAvailability.UNKNOWN);
 		ProductEntity unknown = product("unknown", ProductAvailability.AVAILABLE);
 		ProductEntity checkFailed = product("check-failed", ProductAvailability.AVAILABLE);
-		when(productRepository.findDueForAvailabilityCheck(NOW, PageRequest.of(0, 4)))
+		when(productRepository.findDueSiteCodesForAvailabilityCheck(NOW))
+			.thenReturn(List.of("rocketsalad"));
+		when(productRepository.findDueForAvailabilityCheckBySiteCode("rocketsalad", NOW, PageRequest.of(0, 4)))
 			.thenReturn(List.of(available, soldOut, unknown, checkFailed));
 		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		ProductAvailabilityCheckService service = service(productRepository, new AvailabilityCrawler(Map.of(
@@ -138,20 +150,28 @@ class ProductAvailabilityCheckServiceTest {
 	}
 
 	private ProductAvailabilityCheckService service(ProductRepository productRepository, SiteCrawler crawler) {
+		return service(productRepository, List.of(crawler));
+	}
+
+	private ProductAvailabilityCheckService service(ProductRepository productRepository, List<SiteCrawler> crawlers) {
 		ProductAvailabilityCheckProperties properties = new ProductAvailabilityCheckProperties(true,
 			Duration.ofMinutes(10), 20, Duration.ZERO, Duration.ofHours(6), Duration.ofDays(7), Duration.ofHours(1),
-			Duration.ofHours(2));
-		return new ProductAvailabilityCheckService(productRepository, new CrawlerRegistry(List.of(crawler)), properties,
+			Duration.ofHours(2), 3);
+		return new ProductAvailabilityCheckService(productRepository, new CrawlerRegistry(crawlers), properties,
 			CLOCK, duration -> {
 			});
 	}
 
 	private ProductEntity product(String sourceProductId, ProductAvailability availability) {
-		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드",
-			URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		return product("rocketsalad", sourceProductId, availability);
+	}
+
+	private ProductEntity product(String siteCode, String sourceProductId, ProductAvailability availability) {
+		CrawlSiteEntity site = CrawlSiteEntity.create(siteCode, siteCode,
+			URI.create("https://www." + siteCode + ".co.kr"), "MakeShop", 60);
 		ProductEntity product = ProductEntity.create(site, sourceProductId);
 		CrawledProductRef ref = new CrawledProductRef(sourceProductId,
-			URI.create("https://www.rocketsalad.co.kr/product/" + sourceProductId));
+			URI.create("https://www." + siteCode + ".co.kr/product/" + sourceProductId));
 		product.updateFrom(
 			new CrawledProductDetail(ref, "Vintage Denim", new BigDecimal("55000"), null, availability, "desc", null,
 				"Bottom", Map.of()),
@@ -164,15 +184,21 @@ class ProductAvailabilityCheckServiceTest {
 
 	private static class AvailabilityCrawler implements SiteCrawler {
 
+		private final String siteCode;
 		private final Map<String, ProductAvailability> availabilityBySourceProductId;
 
 		private AvailabilityCrawler(Map<String, ProductAvailability> availabilityBySourceProductId) {
+			this("rocketsalad", availabilityBySourceProductId);
+		}
+
+		private AvailabilityCrawler(String siteCode, Map<String, ProductAvailability> availabilityBySourceProductId) {
+			this.siteCode = siteCode;
 			this.availabilityBySourceProductId = availabilityBySourceProductId;
 		}
 
 		@Override
 		public String siteCode() {
-			return "rocketsalad";
+			return siteCode;
 		}
 
 		@Override

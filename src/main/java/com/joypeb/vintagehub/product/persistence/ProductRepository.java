@@ -18,12 +18,23 @@ public interface ProductRepository extends JpaRepository<ProductEntity, Long>, J
 	Optional<ProductEntity> findBySiteCodeAndSourceProductId(String siteCode, String sourceProductId);
 
 	@Query("""
+		select distinct p.site.code
+		from ProductEntity p
+		where p.availabilityNextCheckAt is not null
+		  and p.availabilityNextCheckAt <= :now
+		order by p.site.code asc
+		""")
+	List<String> findDueSiteCodesForAvailabilityCheck(@Param("now") Instant now);
+
+	@Query("""
 		select p
 		from ProductEntity p
 		join fetch p.site
-		where p.availabilityNextCheckAt is not null
+		where p.site.code = :siteCode
+		  and p.availabilityNextCheckAt is not null
 		  and p.availabilityNextCheckAt <= :now
 		order by p.availabilityNextCheckAt asc, p.id asc
 		""")
-	List<ProductEntity> findDueForAvailabilityCheck(@Param("now") Instant now, Pageable pageable);
+	List<ProductEntity> findDueForAvailabilityCheckBySiteCode(@Param("siteCode") String siteCode,
+			@Param("now") Instant now, Pageable pageable);
 }

@@ -568,14 +568,16 @@ Authorization: Bearer {accessToken}
 
 ## 상품 품절 여부 배치 설정
 
-상품 품절 여부 배치는 `availability_next_check_at <= now()`인 상품만 오래된 확인 예정 시각순으로 조회해 처리한다.
+상품 품절 여부 배치는 `availability_next_check_at <= now()`인 상품이 있는 사이트를 조회한 뒤, 사이트별로 오래된 확인 예정 시각순 `batch-size`개를 처리한다.
 대량의 `AVAILABLE`, `SOLD_OUT` 상품이 쌓여도 전체 상품을 매번 순회하지 않고, 확인 예정 시각이 도래한 상품만 처리한다.
+여러 사이트에 확인 대상 상품이 있으면 사이트 단위 작업을 병렬 실행하되, 동시에 실행되는 사이트 수는 `max-parallel-sites`로 제한한다.
 
 | 설정                                                        | 기본값    | 설명                                    |
 |-----------------------------------------------------------|--------|---------------------------------------|
 | `vintage-hub.product.availability-check.enabled`          | `true` | 품절 여부 배치 활성화 여부                       |
 | `vintage-hub.product.availability-check.fixed-rate`       | `10m`  | 배치 실행 주기                              |
-| `vintage-hub.product.availability-check.batch-size`       | `20`   | 1회 배치에서 확인할 최대 상품 수                   |
+| `vintage-hub.product.availability-check.batch-size`       | `20`   | 1회 배치에서 사이트별로 확인할 최대 상품 수             |
+| `vintage-hub.product.availability-check.max-parallel-sites` | `3`    | 동시에 품절 확인을 실행할 최대 사이트 수                |
 | `vintage-hub.product.availability-check.request-delay`    | `1s`   | 상품별 원본 사이트 요청 간격                      |
 | `vintage-hub.product.availability-check.available-ttl`    | `6h`   | `AVAILABLE` 확인 후 다음 확인까지의 간격          |
 | `vintage-hub.product.availability-check.sold-out-ttl`     | `7d`   | `SOLD_OUT` 확인 후 다음 확인까지의 간격           |

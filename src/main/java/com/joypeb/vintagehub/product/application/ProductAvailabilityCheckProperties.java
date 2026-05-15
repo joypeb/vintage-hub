@@ -13,7 +13,8 @@ public record ProductAvailabilityCheckProperties(
 	Duration availableTtl,
 	Duration soldOutTtl,
 	Duration unknownTtl,
-	Duration checkFailedTtl
+	Duration checkFailedTtl,
+	int maxParallelSites
 ) {
 	public ProductAvailabilityCheckProperties {
 		if (fixedRate == null) {
@@ -36,6 +37,9 @@ public record ProductAvailabilityCheckProperties(
 		}
 		if (checkFailedTtl == null) {
 			checkFailedTtl = Duration.ofHours(2);
+		}
+		if (maxParallelSites < 1) {
+			maxParallelSites = 3;
 		}
 	}
 }
