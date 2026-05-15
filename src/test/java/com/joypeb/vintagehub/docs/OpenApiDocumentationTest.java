@@ -33,6 +33,7 @@ class OpenApiDocumentationTest {
 		mockMvc.perform(get("/v3/api-docs"))
 			.andExpect(status().isOk())
 			.andExpect(jsonPath("$.info.title").value("Vintage Hub API"))
+			.andExpect(jsonPath("$.paths['/api/products'].get").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/crawl-sites/{siteCode}/crawl-runs'].post").exists());
 	}
 }

@@ -14,11 +14,14 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
 
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 @Table(name = "product", uniqueConstraints = {
@@ -33,6 +36,9 @@ public class ProductEntity {
 	@ManyToOne(fetch = FetchType.LAZY, optional = false)
 	@JoinColumn(name = "site_id", nullable = false)
 	private CrawlSiteEntity site;
+
+	@OneToMany(mappedBy = "product")
+	private List<ProductMeasurementEntity> measurements = new ArrayList<>();
 
 	@Column(name = "source_product_id", nullable = false)
 	private String sourceProductId;
@@ -107,6 +113,14 @@ public class ProductEntity {
 		return id;
 	}
 
+	public CrawlSiteEntity site() {
+		return site;
+	}
+
+	public String sourceProductId() {
+		return sourceProductId;
+	}
+
 	public String name() {
 		return name;
 	}
@@ -115,8 +129,32 @@ public class ProductEntity {
 		return originalPrice;
 	}
 
+	public BigDecimal salePrice() {
+		return salePrice;
+	}
+
 	public ProductAvailability stockStatus() {
 		return stockStatus;
+	}
+
+	public String detailUrl() {
+		return detailUrl;
+	}
+
+	public String thumbnailImageUrl() {
+		return thumbnailImageUrl;
+	}
+
+	public String standardCategory() {
+		return standardCategory;
+	}
+
+	public String standardSubCategory() {
+		return standardSubCategory;
+	}
+
+	public Instant collectedAt() {
+		return collectedAt;
 	}
 
 	public boolean needsCrawlRepair() {

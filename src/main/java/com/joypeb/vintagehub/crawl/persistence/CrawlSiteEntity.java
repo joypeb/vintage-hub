@@ -85,6 +85,10 @@ public class CrawlSiteEntity {
 		return code;
 	}
 
+	public String displayName() {
+		return displayName;
+	}
+
 	public URI baseUrl() {
 		return URI.create(baseUrl);
 	}
