@@ -18,9 +18,9 @@
 3. `crawl_run`을 `MANUAL` 실행으로 생성하고 `RUNNING` 상태로 바꾼다.
 4. 크롤러가 제공하는 초기 커서를 기준으로 카테고리별 목록 수집을 시작한다.
 5. 각 목록의 `nextCursor`를 따라 다음 페이지를 수집하되, 초기 커서당 최대 3페이지만 수집한다.
-6. 목록에서 찾은 상품이 이미 DB에 있으면 해당 카테고리 수집을 멈춘다.
-7. 신규 상품이면 `fetchDetail(site, summary.ref())`를 호출해 상품을 저장한다.
-8. `site + sourceProductId` 기준으로 기존 상품을 업데이트하지 않고 중복 지점에서 중단한다.
+6. 목록에서 찾은 상품이 이미 DB에 있고 저장값이 완전하면 해당 카테고리 수집을 멈춘다.
+7. 신규 상품이거나 저장값이 불완전한 기존 상품이면 `fetchDetail(site, summary.ref())`를 호출해 상품을 저장 또는 보정한다.
+8. `site + sourceProductId` 기준으로 정상 기존 상품을 만나면 중복 지점으로 보고 중단한다.
 9. 상세에서 추출한 실측은 기존 실측을 삭제한 뒤 새로 저장한다.
 10. 전체 실행 결과를 `SUCCEEDED` 또는 `FAILED`로 기록한다.
 
@@ -40,7 +40,7 @@
 
 HTTP 상태 코드가 `2xx`가 아니면 `IllegalStateException`을 던진다. `301`, `302`, `303`, `307`, `308`은 `Location` 헤더를 현재 URI 기준으로 해석해 직접 따라간다. I/O 오류와 인터럽트도 `IllegalStateException`으로 래핑된다.
 
-현재 구현에는 요청 간 지연, 재시도, 레이트 리밋 대응, 병렬 수집 제한 로직이 없다.
+`CrawlRunService`는 목록 요청과 상세 요청 직전에 지연 시간을 둔다. 기본값은 1000ms이며, `vintage-hub.crawl.request-delay-ms` 설정으로 조정할 수 있다. 현재 구현에는 재시도, 레이트 리밋 응답 전용 대응, 병렬 수집 제한 로직이 없다.
 
 ## 목록 수집
 
@@ -78,15 +78,15 @@ https://www.rocketsalad.co.kr/m/product_list.html?xcode={xcode}&type=X&viewtype=
 |---|---|
 | 상품 링크 | `a[href*=/m/product.html?branduid=]` |
 | `sourceProductId` | 링크 URL의 `branduid` 쿼리 |
-| 상품명 | 링크 내부 `.pname` 텍스트, 없으면 `title` 속성 |
-| 대표 이미지 | 링크 내부 `.MS_prod_mobile_image`의 `src` |
+| 상품명 | 링크와 가장 가까운 `li` 내부 `.pname` 텍스트, 없으면 링크 내부 `.pname`, 없으면 `title` 속성 |
+| 대표 이미지 | 링크와 가장 가까운 `li` 내부 `.MS_prod_mobile_image`, `.thumb-img img` 순서의 `src` |
 | 원본 상세 URL | `branduid`로 PC 상세 URL 생성 |
 
 목록 결과는 Java `distinct()`로 중복 제거한다. 다음 커서는 항상 같은 카테고리의 다음 페이지로 반환한다.
 
 예를 들어 `PANTS:2`를 수집하면 다음 커서는 `PANTS:3`이다.
 
-수동 실행 서비스는 각 초기 커서에서 시작해 `nextCursor`가 `null`이거나, 목록이 비어 있거나, 이미 DB에 저장된 상품을 만날 때까지 다음 페이지를 호출한다. 빈 DB 최초 수집처럼 중복 상품을 만나지 못하는 경우를 대비해 초기 커서당 최대 3페이지만 수집한다. 이미 저장된 상품을 만나면 그 상품은 업데이트하지 않고 현재 카테고리 페이징을 중단한다. 이는 최신순 목록에서 이전 실행 때 이미 수집한 구간을 다시 따라가며 무한히 수집하는 것을 막기 위한 동작이다.
+수동 실행 서비스는 각 초기 커서에서 시작해 `nextCursor`가 `null`이거나, 목록이 비어 있거나, 이미 DB에 저장된 정상 상품을 만날 때까지 다음 페이지를 호출한다. 빈 DB 최초 수집처럼 중복 상품을 만나지 못하는 경우를 대비해 초기 커서당 최대 3페이지만 수집한다. 이미 저장된 상품의 이름, 원가, 대표 이미지 중 하나가 비어 있으면 상세를 다시 수집해 보정한 뒤 현재 카테고리 페이징을 중단한다. 이는 최신순 목록에서 이전 실행 때 이미 수집한 구간을 다시 따라가며 무한히 수집하는 것을 막기 위한 동작이다.
 
 ## 상세 수집
 
@@ -102,18 +102,18 @@ https://www.rocketsalad.co.kr/m/product.html?branduid={sourceProductId}
 https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid={sourceProductId}
 ```
 
-상세 HTML에서는 먼저 `script[type=application/ld+json]`를 순회하면서 JSON-LD의 `Product` 객체를 찾는다. JSON-LD가 배열이거나 `@graph` 안에 있어도 재귀적으로 탐색한다. JSON 파싱 중 예외가 발생하면 상품 JSON은 없는 것으로 처리한다.
+상세 HTML에서는 먼저 `script[type=application/ld+json]`를 순회하면서 JSON-LD의 `Product` 객체를 찾는다. JSON-LD가 배열이거나 `@graph` 안에 있어도 재귀적으로 탐색한다. 로켓샐러드가 간혹 JSON 표준에 맞지 않는 `\'` escape를 내보내므로 1차 파싱 실패 시 해당 escape를 정규화해 한 번 더 시도한다. 그래도 JSON 파싱 중 예외가 발생하면 상품 JSON은 없는 것으로 처리한다.
 
 상세 필드 추출 규칙은 다음과 같다.
 
 | 저장 값 | 현재 추출 우선순위 |
 |---|---|
-| 상품명 | JSON-LD `name`, 없으면 문서 `title` |
-| 원가 | JSON-LD `offers.price`, 없으면 `#price` input value |
+| 상품명 | JSON-LD `name`, 없으면 `#detail-item h2`, 없으면 문서 `title` |
+| 원가 | JSON-LD `offers.price`, 없으면 `#price` input value, 없으면 `#pricevalue` 텍스트 |
 | 할인가 | `#disprice` input value |
 | 품절 상태 | JSON-LD `offers.availability`, 없으면 DOM 품절 단서 |
 | 설명 | `#detail_img1` 텍스트 |
-| 대표 이미지 | JSON-LD `image[0]` 또는 `image`, 없으면 `.MS_prod_mobile_image` `src` |
+| 대표 이미지 | JSON-LD `image[0]` 또는 `image`, 없으면 `#detail-item .items img`, `.MS_prod_mobile_image`, `og:image` 순서의 URL |
 | 원본 카테고리 | JSON-LD `category` |
 | 실측 | 설명 텍스트에서 정규식 추출 |
 
@@ -160,7 +160,7 @@ https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid={sourceProductId}
 
 ## 저장 로직
 
-신규 상품은 `ProductEntity.updateFrom(detail, summary, collectedAt)`로 저장한다. 이미 존재하는 상품을 만나면 상세를 다시 수집하거나 업데이트하지 않고 현재 카테고리 수집을 멈춘다.
+신규 상품은 `ProductEntity.updateFrom(detail, summary, collectedAt)`로 저장한다. 저장 전 상세 상품명과 목록 상품명이 모두 비어 있으면 상품을 저장하지 않고 실패로 기록한다. 이미 존재하는 상품을 만나면 기본적으로 상세를 다시 수집하거나 업데이트하지 않고 현재 카테고리 수집을 멈춘다. 단, 기존 상품의 이름, 원가, 대표 이미지 중 하나가 비어 있으면 불완전한 수집 결과로 보고 상세를 다시 수집해 업데이트한 뒤 현재 카테고리 수집을 멈춘다.
 
 현재 저장되는 주요 값은 다음과 같다.
 

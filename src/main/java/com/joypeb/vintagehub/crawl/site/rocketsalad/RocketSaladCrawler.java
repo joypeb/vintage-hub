@@ -13,6 +13,8 @@ import com.joypeb.vintagehub.crawl.domain.SiteCrawler;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -28,6 +30,7 @@ import java.util.regex.Pattern;
 @Component
 public class RocketSaladCrawler implements SiteCrawler {
 
+	private static final Logger log = LoggerFactory.getLogger(RocketSaladCrawler.class);
 	private static final String SITE_CODE = "rocketsalad";
 	private static final String DEFAULT_CURSOR = "PANTS:1";
 	private static final Pattern BRANDUID_PATTERN = Pattern.compile("[?&]branduid=([^&]+)");
@@ -73,12 +76,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 	public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
 		ListCursor listCursor = ListCursor.parse(cursor);
 		URI listUrl = mobileListUrl(site.baseUrl(), listCursor);
+		log.debug("RocketSalad list fetch started: cursor={} url={}", listCursor, listUrl);
 		Document document = Jsoup.parse(pageClient.get(listUrl), listUrl.toString());
 		List<CrawledProductSummary> products = document.select("a[href*=/m/product.html?branduid=]").stream()
 			.map(anchor -> toSummary(site.baseUrl(), anchor))
 			.flatMap(Optional::stream)
 			.distinct()
 			.toList();
+		log.debug("RocketSalad list parsed: cursor={} url={} productCount={}", listCursor, listUrl, products.size());
 
 		return new CrawlListResult(products, new CrawlCursor(listCursor.category() + ":" + (listCursor.page() + 1)));
 	}
@@ -86,15 +91,19 @@ public class RocketSaladCrawler implements SiteCrawler {
 	@Override
 	public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
 		URI mobileDetailUrl = mobileDetailUrl(site.baseUrl(), productRef.sourceProductId());
+		log.debug("RocketSalad detail fetch started: sourceProductId={} url={}", productRef.sourceProductId(),
+			mobileDetailUrl);
 		Document document = Jsoup.parse(pageClient.get(mobileDetailUrl), mobileDetailUrl.toString());
 		Optional<JsonNode> productJson = productJson(document);
 		JsonNode offers = productJson.map(json -> json.path("offers")).orElse(null);
 		String detailText = normalize(document.selectFirst("#detail_img1") == null ? "" : document.selectFirst("#detail_img1").text());
 
-		return new CrawledProductDetail(
+		CrawledProductDetail detail = new CrawledProductDetail(
 			productRef,
-			firstText(productJson.map(json -> json.path("name").asText(null)).orElse(null), document.title()),
-			firstPrice(offers == null ? null : offers.path("price").asText(null), inputValue(document, "#price")),
+			firstText(productJson.map(json -> json.path("name").asText(null)).orElse(null),
+				document.select("#detail-item h2").text(), document.title()),
+			firstPrice(offers == null ? null : offers.path("price").asText(null), inputValue(document, "#price"),
+				document.select("#pricevalue").text()),
 			price(inputValue(document, "#disprice")),
 			availability(productJson, document),
 			detailText,
@@ -102,6 +111,11 @@ public class RocketSaladCrawler implements SiteCrawler {
 			productJson.map(json -> json.path("category").asText(null)).orElse(null),
 			measurements(detailText)
 		);
+		log.debug("RocketSalad detail parsed: sourceProductId={} namePresent={} price={} stockStatus={} imagePresent={} descriptionLength={} measurementCount={}",
+			productRef.sourceProductId(), detail.name() != null && !detail.name().isBlank(), detail.originalPrice(),
+			detail.availability(), detail.thumbnailImageUrl() != null, detailText == null ? 0 : detailText.length(),
+			detail.measurements() == null ? 0 : detail.measurements().size());
+		return detail;
 	}
 
 	@Override
@@ -115,26 +129,48 @@ public class RocketSaladCrawler implements SiteCrawler {
 		if (sourceProductId == null) {
 			return Optional.empty();
 		}
-		String name = firstText(anchor.select(".pname").text(), anchor.attr("title"));
-		URI imageUrl = absoluteUrl(baseUrl, anchor.select(".MS_prod_mobile_image").attr("src"));
+		Element productCard = anchor.closest("li");
+		Element productScope = productCard == null ? anchor : productCard;
+		String name = firstText(productScope.select(".pname").text(), anchor.select(".pname").text(), anchor.attr("title"));
+		URI imageUrl = absoluteUrl(baseUrl, firstText(
+			productScope.select(".MS_prod_mobile_image").attr("src"),
+			productScope.select(".thumb-img img").attr("src"),
+			anchor.select(".MS_prod_mobile_image").attr("src")
+		));
 		CrawledProductRef ref = new CrawledProductRef(sourceProductId, pcDetailUrl(baseUrl, sourceProductId));
 		return Optional.of(new CrawledProductSummary(ref, name, imageUrl));
 	}
 
 	private Optional<JsonNode> productJson(Document document) {
 		for (Element script : document.select("script[type=application/ld+json]")) {
-			try {
-				JsonNode root = objectMapper.readTree(script.data().isBlank() ? script.html() : script.data());
-				Optional<JsonNode> product = findProductJson(root);
-				if (product.isPresent()) {
-					return product;
-				}
-			}
-			catch (Exception ignored) {
-				return Optional.empty();
+			Optional<JsonNode> product = parseProductJson(script.data().isBlank() ? script.html() : script.data());
+			if (product.isPresent()) {
+				return product;
 			}
 		}
 		return Optional.empty();
+	}
+
+	private Optional<JsonNode> parseProductJson(String json) {
+		try {
+			return findProductJson(objectMapper.readTree(json));
+		}
+		catch (Exception exception) {
+			log.debug("RocketSalad JSON-LD parse failed; retrying after normalization: reason={}",
+				exception.getMessage());
+			try {
+				return findProductJson(objectMapper.readTree(normalizeJsonLd(json)));
+			}
+			catch (Exception retryException) {
+				log.warn("RocketSalad JSON-LD parsing failed after normalization; falling back to DOM selectors: reason={}",
+					retryException.getMessage());
+				return Optional.empty();
+			}
+		}
+	}
+
+	private String normalizeJsonLd(String json) {
+		return json.replace("\\'", "'");
 	}
 
 	private Optional<JsonNode> findProductJson(JsonNode node) {
@@ -183,7 +219,12 @@ public class RocketSaladCrawler implements SiteCrawler {
 			}
 			return image.asText(null);
 		}).orElse(null);
-		return absoluteUrl(baseUrl, firstText(jsonImage, document.select(".MS_prod_mobile_image").attr("src")));
+		return absoluteUrl(baseUrl, firstText(
+			jsonImage,
+			document.select("#detail-item .items img").attr("src"),
+			document.select(".MS_prod_mobile_image").attr("src"),
+			document.select("meta[property=og:image]").attr("content")
+		));
 	}
 
 	private Map<String, String> measurements(String text) {
@@ -231,9 +272,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 		return input == null ? null : input.attr("value");
 	}
 
-	private BigDecimal firstPrice(String first, String second) {
-		BigDecimal firstPrice = price(first);
-		return firstPrice == null ? price(second) : firstPrice;
+	private BigDecimal firstPrice(String... values) {
+		for (String value : values) {
+			BigDecimal parsedPrice = price(value);
+			if (parsedPrice != null) {
+				return parsedPrice;
+			}
+		}
+		return null;
 	}
 
 	private BigDecimal price(String value) {
@@ -247,12 +293,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 		return new BigDecimal(digits);
 	}
 
-	private String firstText(String first, String second) {
-		String normalizedFirst = normalize(first);
-		if (normalizedFirst != null && !normalizedFirst.isBlank()) {
-			return normalizedFirst;
+	private String firstText(String... values) {
+		for (String value : values) {
+			String normalizedValue = normalize(value);
+			if (normalizedValue != null && !normalizedValue.isBlank()) {
+				return normalizedValue;
+			}
 		}
-		return normalize(second);
+		return null;
 	}
 
 	private String normalize(String value) {

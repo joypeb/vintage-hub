@@ -4,3 +4,11 @@ spring:
     username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
     driver-class-name: org.postgresql.Driver
+
+vintage-hub:
+  crawl:
+    request-delay-ms: 1000
+
+logging:
+  level:
+    com.joypeb.vintagehub.crawl.site.rocketsalad: DEBUG

@@ -117,10 +117,18 @@ public class ProductEntity {
 		return stockStatus;
 	}
 
+	public boolean needsCrawlRepair() {
+		return isBlank(name) || originalPrice == null || isBlank(thumbnailImageUrl);
+	}
+
 	private String firstText(String first, String second) {
 		if (first != null && !first.isBlank()) {
 			return first;
 		}
 		return second;
+	}
+
+	private boolean isBlank(String value) {
+		return value == null || value.isBlank();
 	}
 }

@@ -16,10 +16,16 @@ import com.joypeb.vintagehub.product.persistence.ProductMeasurementEntity;
 import com.joypeb.vintagehub.product.persistence.ProductMeasurementRepository;
 import com.joypeb.vintagehub.product.persistence.ProductRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 
 import java.math.BigDecimal;
 import java.net.URI;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,10 +33,12 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+@ExtendWith(OutputCaptureExtension.class)
 class CrawlRunServiceTest {
 
 	@Test
@@ -96,7 +104,7 @@ class CrawlRunServiceTest {
 		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 		when(productRepository.findBySiteAndSourceProductId(site, "top-new")).thenReturn(Optional.empty());
 		when(productRepository.findBySiteAndSourceProductId(site, "top-old"))
-			.thenReturn(Optional.of(ProductEntity.create(site, "top-old")));
+			.thenReturn(Optional.of(completeProduct(site, "top-old")));
 		when(productRepository.findBySiteAndSourceProductId(site, "pants-new")).thenReturn(Optional.empty());
 		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -169,6 +177,129 @@ class CrawlRunServiceTest {
 		assertThat(crawler.fetchedCursors).containsExactly("TOP:1", "TOP:2", "TOP:3");
 		assertThat(result.foundCount()).isEqualTo(3);
 		assertThat(result.createdCount()).isEqualTo(3);
+	}
+
+	@Test
+	void requestManualRunLogsCrawlProgress(CapturedOutput output) {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		SiteCrawler crawler = new StubSiteCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "521529")).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.requestManualRun("rocketsalad");
+
+		assertThat(output).contains("Crawl run started");
+		assertThat(output).contains("Crawl cursor fetched");
+		assertThat(output).contains("Crawl product saved");
+		assertThat(output).contains("Crawl run succeeded");
+	}
+
+	@Test
+	void requestManualRunAppliesConfiguredDelayBeforeListAndDetailRequests() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		SiteCrawler crawler = new StubSiteCrawler();
+		List<Duration> appliedDelays = new ArrayList<>();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler)),
+			Duration.ofMillis(1000),
+			appliedDelays::add
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "521529")).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		service.requestManualRun("rocketsalad");
+
+		assertThat(appliedDelays).containsExactly(Duration.ofMillis(1000), Duration.ofMillis(1000));
+	}
+
+	@Test
+	void requestManualRunRejectsNewProductWhenNameIsBlank() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		BlankProductCrawler crawler = new BlankProductCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "blank-name")).thenReturn(Optional.empty());
+
+		CrawlRunResult result = service.requestManualRun("rocketsalad");
+
+		assertThat(result.foundCount()).isEqualTo(1);
+		assertThat(result.createdCount()).isZero();
+		assertThat(result.updatedCount()).isZero();
+		assertThat(result.failedCount()).isEqualTo(1);
+		assertThat(result.message()).contains("blank-name");
+		assertThat(result.message()).contains("blank product name");
+		verify(productRepository, never()).save(any());
+	}
+
+	@Test
+	void requestManualRunRepairsExistingProductWhenStoredProductIsIncomplete() {
+		CrawlSiteRepository siteRepository = mock(CrawlSiteRepository.class);
+		CrawlRunRepository runRepository = mock(CrawlRunRepository.class);
+		ProductRepository productRepository = mock(ProductRepository.class);
+		ProductMeasurementRepository measurementRepository = mock(ProductMeasurementRepository.class);
+		PagedSiteCrawler crawler = new PagedSiteCrawler();
+		CrawlRunService service = new CrawlRunService(
+			siteRepository,
+			runRepository,
+			productRepository,
+			measurementRepository,
+			new CrawlerRegistry(List.of(crawler))
+		);
+		CrawlSiteEntity site = CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60);
+		ProductEntity incompleteProduct = ProductEntity.create(site, "top-old");
+		when(siteRepository.findByCode("rocketsalad")).thenReturn(Optional.of(site));
+		when(runRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+		when(productRepository.findBySiteAndSourceProductId(site, "top-new")).thenReturn(Optional.empty());
+		when(productRepository.findBySiteAndSourceProductId(site, "top-old"))
+			.thenReturn(Optional.of(incompleteProduct));
+		when(productRepository.findBySiteAndSourceProductId(site, "pants-new")).thenReturn(Optional.empty());
+		when(productRepository.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+		CrawlRunResult result = service.requestManualRun("rocketsalad");
+
+		assertThat(result.foundCount()).isEqualTo(3);
+		assertThat(result.createdCount()).isEqualTo(2);
+		assertThat(result.updatedCount()).isEqualTo(1);
+		assertThat(result.failedCount()).isZero();
+		assertThat(crawler.fetchedDetails).containsExactly("top-new", "top-old", "pants-new");
+		ArgumentCaptor<ProductEntity> productCaptor = ArgumentCaptor.forClass(ProductEntity.class);
+		verify(productRepository, times(3)).save(productCaptor.capture());
+		assertThat(productCaptor.getAllValues()).extracting(ProductEntity::name)
+			.contains("top-old");
 	}
 
 	private static class StubSiteCrawler implements SiteCrawler {
@@ -305,6 +436,41 @@ class CrawlRunServiceTest {
 		}
 	}
 
+	private static class BlankProductCrawler implements SiteCrawler {
+
+		@Override
+		public String siteCode() {
+			return "rocketsalad";
+		}
+
+		@Override
+		public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+			CrawledProductRef ref = new CrawledProductRef("blank-name",
+				URI.create("https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid=blank-name"));
+			return new CrawlListResult(List.of(new CrawledProductSummary(ref, "", null)), null);
+		}
+
+		@Override
+		public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+			return new CrawledProductDetail(
+				productRef,
+				"",
+				new BigDecimal("30000"),
+				null,
+				ProductAvailability.UNKNOWN,
+				"detail text",
+				null,
+				null,
+				Map.of()
+			);
+		}
+
+		@Override
+		public ProductAvailability checkAvailability(CrawlTargetSite site, CrawledProductRef productRef) {
+			return ProductAvailability.UNKNOWN;
+		}
+	}
+
 	private static CrawledProductSummary summary(String sourceProductId) {
 		CrawledProductRef ref = new CrawledProductRef(sourceProductId,
 			URI.create("https://www.rocketsalad.co.kr/shop/shopdetail.html?branduid=" + sourceProductId));
@@ -324,5 +490,12 @@ class CrawlRunServiceTest {
 			"Pants > casual",
 			Map.of("허리", "44", "기장", "51")
 		);
+	}
+
+	private static ProductEntity completeProduct(CrawlSiteEntity site, String sourceProductId) {
+		ProductEntity product = ProductEntity.create(site, sourceProductId);
+		CrawledProductSummary summary = summary(sourceProductId);
+		product.updateFrom(detail(summary.ref(), ProductAvailability.AVAILABLE), summary, Instant.now());
+		return product;
 	}
 }
