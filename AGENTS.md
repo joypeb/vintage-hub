@@ -81,6 +81,7 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
   - 크롤링 가능 여부 : `docs/crawlability-report.md`
   - 아키텍처 : `docs/architecture.md`
   - 기획, 디자인 : `docs/design.md` 
+  - 내부 API 명세 : `docs/internal-api.md` (API 요청/응답 변경 시 반드시 함께 수정)
 
 
 ## Build, Test, and Development Commands
