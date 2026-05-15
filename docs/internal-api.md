@@ -6,7 +6,7 @@
 - Content-Type: `application/json`
 - 날짜/시간: ISO-8601 UTC 문자열, 예: `2026-05-15T01:00:00Z`
 - 금액/실측값: JSON number로 응답되며 Java 타입은 `BigDecimal`
-- 공통 응답 래퍼: 모든 API 응답은 `ApiResponse<T>` 형식을 사용한다.
+- 공통 응답 래퍼: 애플리케이션 API 응답은 `ApiResponse<T>` 형식을 사용한다. 단, Spring Boot Actuator 운영 엔드포인트는 Actuator 기본 응답 형식을 사용한다.
 
 ## 공통 응답 형식
 
@@ -55,6 +55,28 @@
 | 401 | `ERROR_003` | 인증이 필요합니다. | 관리자 로그인 실패, 관리자 JWT 누락/만료/검증 실패 |
 | 403 | `ERROR_004` | 권한이 부족합니다. | 권한 부족 또는 비밀번호 해시 생성 API 비활성화 |
 | 500 | `ERROR_999` | 서버 내부 오류입니다. | 처리되지 않은 예외 발생 |
+
+## 운영 헬스 체크
+
+Spring Boot Actuator 헬스 엔드포인트로 애플리케이션 상태를 조회한다.
+
+### 요청
+
+```http
+GET /actuator/health
+```
+
+### 성공 응답
+
+- HTTP Status: `200 OK`
+- 인증: 불필요
+- 응답 형식: Spring Boot Actuator 기본 형식
+
+```json
+{
+  "status": "UP"
+}
+```
 
 ## 관리자 인증
 
