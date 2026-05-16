@@ -153,6 +153,64 @@ class ProductListControllerTest {
 			.andExpect(jsonPath("$.data.totalElements").value(1));
 	}
 
+	@Test
+	void listProductsAppliesPriceSortOptionsUsingDisplayPrice() throws Exception {
+		CrawlSiteEntity site = crawlSiteRepository.save(
+			CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60)
+		);
+		saveProduct(site, "middle-price", "중간 가격 상품", new BigDecimal("60000"), new BigDecimal("45000"),
+			ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T03:00:00Z"));
+		saveProduct(site, "lowest-price", "가장 낮은 가격 상품", new BigDecimal("30000"), null,
+			ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T02:00:00Z"));
+		saveProduct(site, "highest-price", "가장 높은 가격 상품", new BigDecimal("70000"), null,
+			ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T01:00:00Z"));
+
+		mockMvc.perform(get("/api/products")
+				.param("sort", "PRICE_LOW")
+				.param("page", "0")
+				.param("size", "10"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.content[0].sourceProductId").value("lowest-price"))
+			.andExpect(jsonPath("$.data.content[1].sourceProductId").value("middle-price"))
+			.andExpect(jsonPath("$.data.content[1].displayPrice").value(45000))
+			.andExpect(jsonPath("$.data.content[2].sourceProductId").value("highest-price"));
+
+		mockMvc.perform(get("/api/products")
+				.param("sort", "PRICE_HIGH")
+				.param("page", "0")
+				.param("size", "10"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.content[0].sourceProductId").value("highest-price"))
+			.andExpect(jsonPath("$.data.content[1].sourceProductId").value("middle-price"))
+			.andExpect(jsonPath("$.data.content[1].displayPrice").value(45000))
+			.andExpect(jsonPath("$.data.content[2].sourceProductId").value("lowest-price"));
+	}
+
+	@Test
+	void listProductsSearchesByProductNameKeywordTokens() throws Exception {
+		CrawlSiteEntity site = crawlSiteRepository.save(
+			CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60)
+		);
+		saveProduct(site, "matched-denim-pants", "Levis denim pants", new BigDecimal("70000"), null,
+			ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T01:00:00Z"));
+		saveProduct(site, "denim-jacket", "Levis denim jacket", new BigDecimal("90000"), null,
+			ProductAvailability.AVAILABLE, "TOP > JACKET", Instant.parse("2026-05-15T02:00:00Z"));
+		saveProduct(site, "wide-pants", "Wide pants", new BigDecimal("50000"), null,
+			ProductAvailability.AVAILABLE, "PANTS", Instant.parse("2026-05-15T03:00:00Z"));
+
+		mockMvc.perform(get("/api/products")
+				.param("keyword", "  LEVIS pants  ")
+				.param("page", "0")
+				.param("size", "10"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data.content.length()").value(1))
+			.andExpect(jsonPath("$.data.content[0].sourceProductId").value("matched-denim-pants"))
+			.andExpect(jsonPath("$.data.totalElements").value(1));
+	}
+
 	private ProductEntity saveProduct(CrawlSiteEntity site, String sourceProductId, String name, BigDecimal originalPrice,
 			BigDecimal salePrice, ProductAvailability availability, String sourceCategoryName, Instant collectedAt) {
 		CrawledProductRef ref = new CrawledProductRef(sourceProductId,

@@ -99,6 +99,13 @@ class ProductFilterOptionsControllerTest {
 			.andExpect(jsonPath("$.data.measurements[1].productCount").value(1))
 			.andExpect(jsonPath("$.data.measurements[2].part").value("허리"))
 			.andExpect(jsonPath("$.data.measurements[2].productCount").value(1))
+			.andExpect(jsonPath("$.data.sorts.length()").value(3))
+			.andExpect(jsonPath("$.data.sorts[0].code").value("LATEST"))
+			.andExpect(jsonPath("$.data.sorts[0].name").value("최신순"))
+			.andExpect(jsonPath("$.data.sorts[1].code").value("PRICE_LOW"))
+			.andExpect(jsonPath("$.data.sorts[1].name").value("가격 낮은순"))
+			.andExpect(jsonPath("$.data.sorts[2].code").value("PRICE_HIGH"))
+			.andExpect(jsonPath("$.data.sorts[2].name").value("가격 높은순"))
 			.andExpect(jsonPath("$.error").doesNotExist());
 	}
 

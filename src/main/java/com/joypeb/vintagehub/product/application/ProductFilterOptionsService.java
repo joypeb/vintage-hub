@@ -3,12 +3,14 @@ package com.joypeb.vintagehub.product.application;
 import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.CategoryOption;
 import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.MeasurementOption;
 import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.SiteOption;
+import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.SortOption;
 import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.SubCategoryOption;
 import com.joypeb.vintagehub.product.persistence.ProductMeasurementRepository;
 import com.joypeb.vintagehub.product.persistence.ProductRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -45,6 +47,9 @@ public class ProductFilterOptionsService {
 			.stream()
 			.map(measurement -> new MeasurementOption(measurement.name(), measurement.productCount()))
 			.toList();
-		return new ProductFilterOptionsResult(sites, categories, measurements);
+		List<SortOption> sorts = Arrays.stream(ProductSortOption.values())
+			.map(sort -> new SortOption(sort.name(), sort.displayName()))
+			.toList();
+		return new ProductFilterOptionsResult(sites, categories, measurements, sorts);
 	}
 }

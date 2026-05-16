@@ -228,7 +228,7 @@ POST /api/admin/auth/password-hash
 
 ## 3. 상품 목록 조회
 
-상품 목록을 최신 수집순(`collectedAt` 내림차순)으로 조회한다.
+상품 목록을 상품명 검색어와 필터 조건으로 조회한다. 정렬 기준을 지정하지 않으면 최신 수집순(`collectedAt` 내림차순)으로 조회한다.
 
 ### 요청
 
@@ -240,6 +240,7 @@ GET /api/products
 
 | 이름 | 타입 | 필수 | 기본값 | 설명 |
 | --- | --- | --- | --- | --- |
+| `keyword` | string | N | 없음 | 상품명 검색어. 대소문자를 구분하지 않는 부분 검색이며, 앞뒤 공백은 제거한다. 공백으로 구분된 여러 단어는 모두 상품명에 포함되어야 한다. |
 | `siteCode` | string | N | 없음 | 크롤링 사이트 코드. 예: `rocketsalad` |
 | `standardCategory` | string | N | 없음 | 표준 대분류. 예: `하의`, `상의`, `아우터`, `액세서리`, `신발` |
 | `standardSubCategory` | string | N | 없음 | 표준 중분류. 예: `팬츠`, `셔츠`, `티셔츠`, `니트`, `스웻`, `베스트`, `모자`, `기타`, `벨트`, `쥬얼리`, `넥타이`, `서스펜더` |
@@ -250,13 +251,14 @@ GET /api/products
 | `measurementPart` | string | N | 없음 | 하위 호환용 단일 실측 부위명. 예: `허리`, `허벅지` |
 | `minMeasurement` | number | N | 없음 | 하위 호환용 단일 실측값 최솟값, 단위 cm |
 | `maxMeasurement` | number | N | 없음 | 하위 호환용 단일 실측값 최댓값, 단위 cm |
+| `sort` | string enum | N | `LATEST` | 정렬 기준. `LATEST`(최신순), `PRICE_LOW`(가격 낮은순), `PRICE_HIGH`(가격 높은순). 가격 정렬은 `displayPrice` 기준 |
 | `page` | integer | N | `0` | 0부터 시작하는 페이지 번호 |
 | `size` | integer | N | `20` | 페이지 크기. 1 미만이면 20으로 보정, 100 초과면 100으로 제한 |
 
 ### 요청 예시
 
 ```http
-GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCategory=팬츠&stockStatus=AVAILABLE&minPrice=40000&maxPrice=45000&measurementFilters=허리:40:50&measurementFilters=허벅지:30&measurementFilters=밑단:20:30&page=0&size=10
+GET /api/products?keyword=denim%20pants&siteCode=rocketsalad&standardCategory=하의&standardSubCategory=팬츠&stockStatus=AVAILABLE&minPrice=40000&maxPrice=45000&measurementFilters=허리:40:50&measurementFilters=허벅지:30&measurementFilters=밑단:20:30&sort=PRICE_LOW&page=0&size=10
 ```
 
 ### 성공 응답
@@ -319,13 +321,14 @@ GET /api/products?siteCode=rocketsalad&standardCategory=하의&standardSubCatego
 
 ## 4. 상품 필터 옵션 조회
 
-프론트엔드의 상품 검색 필터 구성을 위해 현재 상품 데이터에 실제로 존재하는 사이트, 표준 카테고리, 실측 부위 목록을 조회한다.
+프론트엔드의 상품 검색 필터 구성을 위해 현재 상품 데이터에 실제로 존재하는 사이트, 표준 카테고리, 실측 부위 목록과 상품 목록 정렬 옵션을 조회한다.
 
 - 상품이 1개 이상 있는 사이트만 응답한다.
 - `standardCategory`, `standardSubCategory`, 실측 `part`가 `null`이거나 빈 문자열인 값은 제외한다.
 - 카테고리는 대분류 기준 상품 수 내림차순, 이름 오름차순으로 정렬한다.
 - 사이트는 상품 수 내림차순, 사이트 코드 오름차순으로 정렬한다.
 - 실측 부위는 부위명 오름차순으로 정렬한다.
+- 정렬 옵션은 기본 정렬인 `LATEST`를 먼저 응답한 뒤 `PRICE_LOW`, `PRICE_HIGH` 순서로 응답한다.
 
 ### 요청
 
@@ -391,6 +394,20 @@ GET /api/products/filter-options
         "part": "허리",
         "productCount": 28
       }
+    ],
+    "sorts": [
+      {
+        "code": "LATEST",
+        "name": "최신순"
+      },
+      {
+        "code": "PRICE_LOW",
+        "name": "가격 낮은순"
+      },
+      {
+        "code": "PRICE_HIGH",
+        "name": "가격 높은순"
+      }
     ]
   }
 }
@@ -413,6 +430,9 @@ GET /api/products/filter-options
 | `measurements` | array | N | 상품 실측에 실제로 존재하는 부위 목록 |
 | `measurements[].part` | string | N | 실측 부위명. `measurementFilters` 또는 `measurementPart` 값으로 사용 |
 | `measurements[].productCount` | integer | N | 해당 실측 부위를 가진 상품 수 |
+| `sorts` | array | N | 상품 목록 조회에서 사용할 수 있는 정렬 옵션 |
+| `sorts[].code` | string enum | N | 상품 목록 조회의 `sort` 값. `LATEST`, `PRICE_LOW`, `PRICE_HIGH` |
+| `sorts[].name` | string | N | 화면 표시용 정렬 이름 |
 
 ## 5. 상품 상세 조회
 

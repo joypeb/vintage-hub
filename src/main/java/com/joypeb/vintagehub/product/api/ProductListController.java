@@ -6,6 +6,7 @@ import com.joypeb.vintagehub.product.application.ProductDetailResult;
 import com.joypeb.vintagehub.product.application.ProductListResult;
 import com.joypeb.vintagehub.product.application.ProductSearchCondition;
 import com.joypeb.vintagehub.product.application.ProductSearchService;
+import com.joypeb.vintagehub.product.application.ProductSortOption;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +30,7 @@ class ProductListController {
 
 	@GetMapping
 	ApiResponse<ProductListResult> listProducts(
+			@RequestParam(required = false) String keyword,
 			@RequestParam(required = false) String siteCode,
 			@RequestParam(required = false) String standardCategory,
 			@RequestParam(required = false) String standardSubCategory,
@@ -39,11 +41,12 @@ class ProductListController {
 			@RequestParam(required = false) BigDecimal minMeasurement,
 			@RequestParam(required = false) BigDecimal maxMeasurement,
 			@RequestParam(required = false) List<String> measurementFilters,
+			@RequestParam(defaultValue = "LATEST") ProductSortOption sort,
 			@RequestParam(defaultValue = "0") int page,
 			@RequestParam(defaultValue = "20") int size) {
-		ProductSearchCondition condition = new ProductSearchCondition(siteCode, standardCategory, standardSubCategory,
+		ProductSearchCondition condition = new ProductSearchCondition(keyword, siteCode, standardCategory, standardSubCategory,
 			stockStatus, minPrice, maxPrice,
-			parseMeasurementFilters(measurementFilters, measurementPart, minMeasurement, maxMeasurement));
+			parseMeasurementFilters(measurementFilters, measurementPart, minMeasurement, maxMeasurement), sort);
 		return ApiResponse.success(productSearchService.search(condition, page, size));
 	}
 

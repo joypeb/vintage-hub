@@ -9,7 +9,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,12 +29,14 @@ public class ProductSearchService {
 	@Transactional(readOnly = true)
 	public ProductListResult search(ProductSearchCondition condition, int page, int size) {
 		int resolvedSize = normalizedSize(size);
-		Pageable pageable = PageRequest.of(page, resolvedSize, Sort.by(Sort.Direction.DESC, "collectedAt"));
+		Pageable pageable = PageRequest.of(page, resolvedSize, condition.sort().sort());
 		log.atDebug()
 			.addKeyValue("event", "product.search.started")
 			.addKeyValue("page", page)
 			.addKeyValue("size", size)
 			.addKeyValue("resolvedSize", resolvedSize)
+			.addKeyValue("sort", condition.sort())
+			.addKeyValue("keyword", condition.keyword())
 			.addKeyValue("siteCode", condition.siteCode())
 			.addKeyValue("standardCategory", condition.standardCategory())
 			.addKeyValue("standardSubCategory", condition.standardSubCategory())
@@ -50,6 +51,7 @@ public class ProductSearchService {
 			.addKeyValue("event", "product.search.completed")
 			.addKeyValue("page", page)
 			.addKeyValue("size", resolvedSize)
+			.addKeyValue("sort", condition.sort())
 			.addKeyValue("resultCount", products.getNumberOfElements())
 			.addKeyValue("totalElements", products.getTotalElements())
 			.log("product.search.completed");

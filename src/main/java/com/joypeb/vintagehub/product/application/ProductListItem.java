@@ -43,6 +43,9 @@ public record ProductListItem(
 	}
 
 	private static BigDecimal displayPrice(ProductEntity product) {
+		if (product.displayPrice() != null) {
+			return product.displayPrice();
+		}
 		if (product.salePrice() != null) {
 			return product.salePrice();
 		}

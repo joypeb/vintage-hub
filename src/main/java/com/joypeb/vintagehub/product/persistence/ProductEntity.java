@@ -17,6 +17,7 @@ import jakarta.persistence.ManyToOne;
 import jakarta.persistence.OneToMany;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
+import org.hibernate.annotations.Formula;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -49,6 +50,9 @@ public class ProductEntity {
 	private BigDecimal originalPrice;
 
 	private BigDecimal salePrice;
+
+	@Formula("coalesce(sale_price, original_price)")
+	private BigDecimal displayPrice;
 
 	@Enumerated(EnumType.STRING)
 	@Column(nullable = false)
@@ -153,6 +157,10 @@ public class ProductEntity {
 
 	public BigDecimal salePrice() {
 		return salePrice;
+	}
+
+	public BigDecimal displayPrice() {
+		return displayPrice;
 	}
 
 	public ProductAvailability stockStatus() {

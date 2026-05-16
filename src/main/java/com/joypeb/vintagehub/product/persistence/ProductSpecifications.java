@@ -4,12 +4,14 @@ import com.joypeb.vintagehub.product.application.ProductSearchCondition;
 import com.joypeb.vintagehub.product.application.ProductSearchCondition.MeasurementFilter;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Join;
+import jakarta.persistence.criteria.Path;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 public final class ProductSpecifications {
 
@@ -19,6 +21,7 @@ public final class ProductSpecifications {
 	public static Specification<ProductEntity> by(ProductSearchCondition condition) {
 		return (root, query, criteriaBuilder) -> {
 			List<Predicate> predicates = new ArrayList<>();
+			addKeywordPredicates(condition.keyword(), root.get("name"), criteriaBuilder, predicates);
 			if (hasText(condition.siteCode())) {
 				predicates.add(criteriaBuilder.equal(root.get("site").get("code"), condition.siteCode()));
 			}
@@ -38,6 +41,27 @@ public final class ProductSpecifications {
 			}
 			return criteriaBuilder.and(predicates.toArray(Predicate[]::new));
 		};
+	}
+
+	private static void addKeywordPredicates(String keyword, Path<String> name, CriteriaBuilder criteriaBuilder,
+			List<Predicate> predicates) {
+		if (!hasText(keyword)) {
+			return;
+		}
+		String[] tokens = keyword.trim().toLowerCase(Locale.ROOT).split("\\s+");
+		for (String token : tokens) {
+			if (hasText(token)) {
+				predicates.add(criteriaBuilder.like(criteriaBuilder.lower(name),
+					"%" + escapeLikePattern(token) + "%", '\\'));
+			}
+		}
+	}
+
+	private static String escapeLikePattern(String value) {
+		return value
+			.replace("\\", "\\\\")
+			.replace("%", "\\%")
+			.replace("_", "\\_");
 	}
 
 	private static void addPricePredicates(ProductSearchCondition condition,

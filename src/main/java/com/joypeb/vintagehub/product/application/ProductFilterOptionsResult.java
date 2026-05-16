@@ -5,13 +5,15 @@ import java.util.List;
 public record ProductFilterOptionsResult(
 	List<SiteOption> sites,
 	List<CategoryOption> categories,
-	List<MeasurementOption> measurements
+	List<MeasurementOption> measurements,
+	List<SortOption> sorts
 ) {
 
 	public ProductFilterOptionsResult {
 		sites = List.copyOf(sites);
 		categories = List.copyOf(categories);
 		measurements = List.copyOf(measurements);
+		sorts = List.copyOf(sorts);
 	}
 
 	public record SiteOption(
@@ -41,6 +43,12 @@ public record ProductFilterOptionsResult(
 	public record MeasurementOption(
 		String part,
 		Long productCount
+	) {
+	}
+
+	public record SortOption(
+		String code,
+		String name
 	) {
 	}
 }
