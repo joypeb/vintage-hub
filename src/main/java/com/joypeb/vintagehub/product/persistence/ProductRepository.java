@@ -18,7 +18,15 @@ public interface ProductRepository extends JpaRepository<ProductEntity, Long>, J
 
 	Optional<ProductEntity> findBySiteAndSourceProductId(CrawlSiteEntity site, String sourceProductId);
 
-	Optional<ProductEntity> findBySiteCodeAndSourceProductId(String siteCode, String sourceProductId);
+	@Query("""
+		select p
+		from ProductEntity p
+		join fetch p.site
+		where p.site.code = :siteCode
+		  and p.sourceProductId = :sourceProductId
+		""")
+	Optional<ProductEntity> findBySiteCodeAndSourceProductId(@Param("siteCode") String siteCode,
+			@Param("sourceProductId") String sourceProductId);
 
 	@Query("""
 		select new com.joypeb.vintagehub.product.application.ProductSiteFilterOption(

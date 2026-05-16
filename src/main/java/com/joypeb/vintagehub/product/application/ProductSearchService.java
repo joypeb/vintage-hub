@@ -3,12 +3,10 @@ package com.joypeb.vintagehub.product.application;
 import com.joypeb.vintagehub.common.api.ResourceNotFoundException;
 import com.joypeb.vintagehub.product.persistence.ProductMeasurementRepository;
 import com.joypeb.vintagehub.product.persistence.ProductRepository;
-import com.joypeb.vintagehub.product.persistence.ProductSpecifications;
+import com.joypeb.vintagehub.product.persistence.ProductSearchQueryRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -19,17 +17,20 @@ public class ProductSearchService {
 	private static final int MAX_PAGE_SIZE = 100;
 
 	private final ProductRepository productRepository;
+	private final ProductSearchQueryRepository productSearchQueryRepository;
 	private final ProductMeasurementRepository measurementRepository;
 
-	public ProductSearchService(ProductRepository productRepository, ProductMeasurementRepository measurementRepository) {
+	public ProductSearchService(ProductRepository productRepository, ProductSearchQueryRepository productSearchQueryRepository,
+			ProductMeasurementRepository measurementRepository) {
 		this.productRepository = productRepository;
+		this.productSearchQueryRepository = productSearchQueryRepository;
 		this.measurementRepository = measurementRepository;
 	}
 
 	@Transactional(readOnly = true)
 	public ProductListResult search(ProductSearchCondition condition, int page, int size) {
 		int resolvedSize = normalizedSize(size);
-		Pageable pageable = PageRequest.of(page, resolvedSize, condition.sort().sort());
+		int resolvedPage = Math.max(page, 0);
 		log.atDebug()
 			.addKeyValue("event", "product.search.started")
 			.addKeyValue("page", page)
@@ -45,11 +46,10 @@ public class ProductSearchService {
 			.addKeyValue("maxPrice", condition.maxPrice())
 			.addKeyValue("measurementFilters", condition.measurementFilters())
 			.log("product.search.started");
-		Page<ProductListItem> products = productRepository.findAll(ProductSpecifications.by(condition), pageable)
-			.map(ProductListItem::from);
+		Page<ProductListItem> products = productSearchQueryRepository.search(condition, resolvedPage, resolvedSize);
 		log.atInfo()
 			.addKeyValue("event", "product.search.completed")
-			.addKeyValue("page", page)
+			.addKeyValue("page", resolvedPage)
 			.addKeyValue("size", resolvedSize)
 			.addKeyValue("sort", condition.sort())
 			.addKeyValue("resultCount", products.getNumberOfElements())

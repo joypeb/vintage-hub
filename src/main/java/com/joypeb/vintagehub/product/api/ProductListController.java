@@ -7,6 +7,8 @@ import com.joypeb.vintagehub.product.application.ProductListResult;
 import com.joypeb.vintagehub.product.application.ProductSearchCondition;
 import com.joypeb.vintagehub.product.application.ProductSearchService;
 import com.joypeb.vintagehub.product.application.ProductSortOption;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,6 +25,11 @@ import java.util.List;
 @RequestMapping("/api/products")
 class ProductListController {
 
+	private static final CacheControl PRODUCT_LIST_CACHE_CONTROL = CacheControl.maxAge(Duration.ofSeconds(30))
+		.mustRevalidate();
+	private static final CacheControl PRODUCT_DETAIL_CACHE_CONTROL = CacheControl.maxAge(Duration.ofSeconds(60))
+		.mustRevalidate();
+
 	private final ProductSearchService productSearchService;
 
 	ProductListController(ProductSearchService productSearchService) {
@@ -29,7 +37,7 @@ class ProductListController {
 	}
 
 	@GetMapping
-	ApiResponse<ProductListResult> listProducts(
+	ResponseEntity<ApiResponse<ProductListResult>> listProducts(
 			@RequestParam(required = false) String keyword,
 			@RequestParam(required = false) String siteCode,
 			@RequestParam(required = false) String standardCategory,
@@ -47,7 +55,11 @@ class ProductListController {
 		ProductSearchCondition condition = new ProductSearchCondition(keyword, siteCode, standardCategory, standardSubCategory,
 			stockStatus, minPrice, maxPrice,
 			parseMeasurementFilters(measurementFilters, measurementPart, minMeasurement, maxMeasurement), sort);
-		return ApiResponse.success(productSearchService.search(condition, page, size));
+		ProductListResult result = productSearchService.search(condition, page, size);
+		return ResponseEntity.ok()
+			.cacheControl(PRODUCT_LIST_CACHE_CONTROL)
+			.eTag(weakEtag(result))
+			.body(ApiResponse.success(result));
 	}
 
 	private static List<ProductSearchCondition.MeasurementFilter> parseMeasurementFilters(List<String> measurementFilters,
@@ -102,9 +114,17 @@ class ProductListController {
 	}
 
 	@GetMapping("/{siteCode}/{sourceProductId}")
-	ApiResponse<ProductDetailResponse> getProductDetail(@PathVariable String siteCode,
+	ResponseEntity<ApiResponse<ProductDetailResponse>> getProductDetail(@PathVariable String siteCode,
 			@PathVariable String sourceProductId) {
-		return ApiResponse.success(ProductDetailResponse.from(productSearchService.getDetail(siteCode, sourceProductId)));
+		ProductDetailResponse result = ProductDetailResponse.from(productSearchService.getDetail(siteCode, sourceProductId));
+		return ResponseEntity.ok()
+			.cacheControl(PRODUCT_DETAIL_CACHE_CONTROL)
+			.eTag(weakEtag(result))
+			.body(ApiResponse.success(result));
+	}
+
+	private static String weakEtag(Object result) {
+		return "W/\"" + Integer.toHexString(result.hashCode()) + "\"";
 	}
 
 	record ProductDetailResponse(

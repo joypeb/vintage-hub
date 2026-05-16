@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.web.context.WebApplicationContext;
 
 import java.math.BigDecimal;
@@ -24,6 +25,7 @@ import java.time.Instant;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -77,6 +79,8 @@ class ProductFilterOptionsControllerTest {
 
 		mockMvc.perform(get("/api/products/filter-options"))
 			.andExpect(status().isOk())
+			.andExpect(header().string("Cache-Control", "max-age=60, must-revalidate"))
+			.andExpect(header().exists("ETag"))
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.sites.length()").value(2))
 			.andExpect(jsonPath("$.data.sites[0].code").value("rocketsalad"))
@@ -107,6 +111,24 @@ class ProductFilterOptionsControllerTest {
 			.andExpect(jsonPath("$.data.sorts[2].code").value("PRICE_HIGH"))
 			.andExpect(jsonPath("$.data.sorts[2].name").value("가격 높은순"))
 			.andExpect(jsonPath("$.error").doesNotExist());
+	}
+
+	@Test
+	void getFilterOptionsReturnsNotModifiedForMatchingEtag() throws Exception {
+		CrawlSiteEntity site = crawlSiteRepository.save(
+			CrawlSiteEntity.create("rocketsalad", "로켓샐러드", URI.create("https://www.rocketsalad.co.kr"), "MakeShop", 60)
+		);
+		saveProduct(site, "rocket-pants", "로켓 팬츠", "PANTS", Instant.parse("2026-05-15T01:00:00Z"));
+
+		MvcResult firstResponse = mockMvc.perform(get("/api/products/filter-options"))
+			.andExpect(status().isOk())
+			.andReturn();
+		String etag = firstResponse.getResponse().getHeader("ETag");
+
+		mockMvc.perform(get("/api/products/filter-options").header("If-None-Match", etag))
+			.andExpect(status().isNotModified())
+			.andExpect(header().string("ETag", etag))
+			.andExpect(header().string("Cache-Control", "max-age=60, must-revalidate"));
 	}
 
 	private ProductEntity saveProduct(CrawlSiteEntity site, String sourceProductId, String name,

@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.Map;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -64,6 +65,7 @@ class ProductDetailControllerTest {
 
 		mockMvc.perform(get("/api/products/{siteCode}/{sourceProductId}", "rocketsalad", "521529"))
 			.andExpect(status().isOk())
+			.andExpect(header().string("Cache-Control", "max-age=60, must-revalidate"))
 			.andExpect(jsonPath("$.success").value(true))
 			.andExpect(jsonPath("$.data.id").value(product.id()))
 			.andExpect(jsonPath("$.data.sourceProductId").value("521529"))

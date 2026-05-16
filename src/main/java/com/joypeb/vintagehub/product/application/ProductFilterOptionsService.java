@@ -7,9 +7,12 @@ import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.Sort
 import com.joypeb.vintagehub.product.application.ProductFilterOptionsResult.SubCategoryOption;
 import com.joypeb.vintagehub.product.persistence.ProductMeasurementRepository;
 import com.joypeb.vintagehub.product.persistence.ProductRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -20,15 +23,33 @@ public class ProductFilterOptionsService {
 
 	private final ProductRepository productRepository;
 	private final ProductMeasurementRepository measurementRepository;
+	private final Duration filterOptionsCacheTtl;
+	private volatile CachedFilterOptions cachedFilterOptions;
 
 	public ProductFilterOptionsService(ProductRepository productRepository,
-			ProductMeasurementRepository measurementRepository) {
+			ProductMeasurementRepository measurementRepository,
+			@Value("${vintage-hub.product.filter-options.cache-ttl:60s}") Duration filterOptionsCacheTtl) {
 		this.productRepository = productRepository;
 		this.measurementRepository = measurementRepository;
+		this.filterOptionsCacheTtl = filterOptionsCacheTtl;
 	}
 
 	@Transactional(readOnly = true)
 	public ProductFilterOptionsResult getFilterOptions() {
+		if (filterOptionsCacheTtl.isZero() || filterOptionsCacheTtl.isNegative()) {
+			return loadFilterOptions();
+		}
+		CachedFilterOptions cached = cachedFilterOptions;
+		Instant now = Instant.now();
+		if (cached != null && cached.expiresAt().isAfter(now)) {
+			return cached.result();
+		}
+		ProductFilterOptionsResult result = loadFilterOptions();
+		cachedFilterOptions = new CachedFilterOptions(result, now.plus(filterOptionsCacheTtl));
+		return result;
+	}
+
+	private ProductFilterOptionsResult loadFilterOptions() {
 		Map<String, List<SubCategoryOption>> subCategoriesByCategory = productRepository.findSubCategoryFilterOptions()
 			.stream()
 			.collect(Collectors.groupingBy(ProductSubCategoryFilterOption::categoryName,
@@ -51,5 +72,8 @@ public class ProductFilterOptionsService {
 			.map(sort -> new SortOption(sort.name(), sort.displayName()))
 			.toList();
 		return new ProductFilterOptionsResult(sites, categories, measurements, sorts);
+	}
+
+	private record CachedFilterOptions(ProductFilterOptionsResult result, Instant expiresAt) {
 	}
 }

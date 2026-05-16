@@ -24,6 +24,8 @@ vintage-hub:
     secret: ${VINTAGE_HUB_JWT_SECRET:}
     access-token-validity-seconds: ${VINTAGE_HUB_JWT_ACCESS_TOKEN_VALIDITY_SECONDS:1800}
   product:
+    filter-options:
+      cache-ttl: 60s
     availability-check:
       enabled: true
       fixed-rate: 10m

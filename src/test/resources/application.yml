@@ -13,3 +13,8 @@ spring:
         dialect: org.hibernate.dialect.H2Dialect
   flyway:
     enabled: false
+
+vintage-hub:
+  product:
+    filter-options:
+      cache-ttl: 0s
