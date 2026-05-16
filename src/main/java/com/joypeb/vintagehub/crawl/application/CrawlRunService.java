@@ -41,14 +41,16 @@ public class CrawlRunService {
 	private final CrawlerRegistry crawlerRegistry;
 	private final Duration requestDelay;
 	private final CrawlRequestSleeper requestSleeper;
+	private final CrawlRunLifecycleService lifecycleService;
 
 	@Autowired
 	public CrawlRunService(CrawlSiteRepository siteRepository, CrawlRunRepository runRepository,
 			ProductRepository productRepository, ProductMeasurementRepository measurementRepository,
 			CrawlerRegistry crawlerRegistry,
+			CrawlRunLifecycleService lifecycleService,
 			@Value("${vintage-hub.crawl.request-delay-ms:1000}") long requestDelayMs) {
 		this(siteRepository, runRepository, productRepository, measurementRepository, crawlerRegistry,
-			Duration.ofMillis(requestDelayMs), CrawlRunService::sleep);
+			Duration.ofMillis(requestDelayMs), CrawlRunService::sleep, lifecycleService);
 	}
 
 	CrawlRunService(CrawlSiteRepository siteRepository, CrawlRunRepository runRepository,
@@ -56,12 +58,20 @@ public class CrawlRunService {
 			CrawlerRegistry crawlerRegistry) {
 		this(siteRepository, runRepository, productRepository, measurementRepository, crawlerRegistry,
 			Duration.ZERO, duration -> {
-			});
+			}, null);
 	}
 
 	CrawlRunService(CrawlSiteRepository siteRepository, CrawlRunRepository runRepository,
 			ProductRepository productRepository, ProductMeasurementRepository measurementRepository,
 			CrawlerRegistry crawlerRegistry, Duration requestDelay, CrawlRequestSleeper requestSleeper) {
+		this(siteRepository, runRepository, productRepository, measurementRepository, crawlerRegistry, requestDelay,
+			requestSleeper, null);
+	}
+
+	CrawlRunService(CrawlSiteRepository siteRepository, CrawlRunRepository runRepository,
+			ProductRepository productRepository, ProductMeasurementRepository measurementRepository,
+			CrawlerRegistry crawlerRegistry, Duration requestDelay, CrawlRequestSleeper requestSleeper,
+			CrawlRunLifecycleService lifecycleService) {
 		this.siteRepository = siteRepository;
 		this.runRepository = runRepository;
 		this.productRepository = productRepository;
@@ -69,6 +79,7 @@ public class CrawlRunService {
 		this.crawlerRegistry = crawlerRegistry;
 		this.requestDelay = requestDelay;
 		this.requestSleeper = requestSleeper;
+		this.lifecycleService = lifecycleService;
 	}
 
 	@Transactional
@@ -79,6 +90,50 @@ public class CrawlRunService {
 	@Transactional
 	public CrawlRunResult requestScheduledRun(String siteCode) {
 		return requestRun(siteCode, CrawlRunEntity::scheduled);
+	}
+
+	@Transactional
+	public CrawlRunResult executeRun(Long runId, String siteCode) {
+		log.atInfo()
+			.addKeyValue("event", "crawl.run.started")
+			.addKeyValue("runId", runId)
+			.addKeyValue("siteCode", siteCode)
+			.addKeyValue("requestDelayMs", requestDelay.toMillis())
+			.log("crawl.run.started");
+		CrawlSiteEntity site = siteRepository.findByCode(siteCode)
+			.orElseThrow(() -> new IllegalArgumentException("Crawl site not found: " + siteCode));
+		SiteCrawler crawler = crawlerRegistry.requireBySiteCode(siteCode);
+
+		try {
+			CrawlCounts counts = saveProducts(site, crawler, runId);
+			String message = successMessage(counts);
+			lifecycleService.markSucceeded(runId, counts.foundCount, counts.createdCount, counts.updatedCount,
+				counts.failedCount, message);
+			site.markCrawled(counts.createdCount + counts.updatedCount > 0);
+			log.atInfo()
+				.addKeyValue("event", "crawl.run.succeeded")
+				.addKeyValue("runId", runId)
+				.addKeyValue("siteCode", site.code())
+				.addKeyValue("foundCount", counts.foundCount)
+				.addKeyValue("createdCount", counts.createdCount)
+				.addKeyValue("updatedCount", counts.updatedCount)
+				.addKeyValue("failedCount", counts.failedCount)
+				.addKeyValue("resultMessage", message)
+				.log("crawl.run.succeeded");
+			return new CrawlRunResult(site.code(), "SUCCEEDED", counts.foundCount, counts.createdCount,
+				counts.updatedCount, counts.failedCount, message);
+		}
+		catch (RuntimeException exception) {
+			lifecycleService.markFailed(runId, failureMessage(exception));
+			log.atError()
+				.setCause(exception)
+				.addKeyValue("event", "crawl.run.failed")
+				.addKeyValue("runId", runId)
+				.addKeyValue("siteCode", siteCode)
+				.addKeyValue("reason", failureMessage(exception))
+				.log("crawl.run.failed");
+			throw exception;
+		}
 	}
 
 	private CrawlRunResult requestRun(String siteCode, CrawlRunFactory runFactory) {
@@ -129,6 +184,10 @@ public class CrawlRunService {
 	}
 
 	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler) {
+		return saveProducts(site, crawler, null);
+	}
+
+	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler, Long runId) {
 		CrawlCounts counts = new CrawlCounts();
 		CrawlTargetSite targetSite = new CrawlTargetSite(site.code(), site.baseUrl());
 		List<CrawlCursor> initialCursors = crawler.initialCursors();
@@ -140,17 +199,17 @@ public class CrawlRunService {
 			.log("crawl.cursors.resolved");
 
 		if (initialCursors.isEmpty()) {
-			collectCursor(site, crawler, targetSite, null, counts);
+			collectCursor(site, crawler, targetSite, null, counts, runId);
 			return counts;
 		}
 		for (CrawlCursor initialCursor : initialCursors) {
-			collectCursor(site, crawler, targetSite, initialCursor, counts);
+			collectCursor(site, crawler, targetSite, initialCursor, counts, runId);
 		}
 		return counts;
 	}
 
 	private void collectCursor(CrawlSiteEntity site, SiteCrawler crawler, CrawlTargetSite targetSite,
-			CrawlCursor initialCursor, CrawlCounts counts) {
+			CrawlCursor initialCursor, CrawlCounts counts, Long runId) {
 		CrawlCursor cursor = initialCursor;
 		for (int pageCount = 0; pageCount < MAX_PAGES_PER_INITIAL_CURSOR; pageCount++) {
 			log.atInfo()
@@ -169,7 +228,7 @@ public class CrawlRunService {
 				.addKeyValue("productCount", listResult.products().size())
 				.addKeyValue("nextCursor", cursorValue(listResult.nextCursor()))
 				.log("crawl.cursor.fetch.succeeded");
-			boolean stopPaging = savePageProducts(site, crawler, targetSite, listResult.products(), counts);
+			boolean stopPaging = savePageProducts(site, crawler, targetSite, listResult.products(), counts, runId);
 			if (stopPaging) {
 				logCursorStopped(site, cursor, "existing-product");
 				return;
@@ -187,11 +246,12 @@ public class CrawlRunService {
 	}
 
 	private boolean savePageProducts(CrawlSiteEntity site, SiteCrawler crawler, CrawlTargetSite targetSite,
-			List<CrawledProductSummary> summaries, CrawlCounts counts) {
+			List<CrawledProductSummary> summaries, CrawlCounts counts, Long runId) {
 		Instant collectedAt = Instant.now();
 		for (CrawledProductSummary summary : summaries) {
 			counts.foundCount++;
 			String sourceProductId = summary.ref().sourceProductId();
+			markProgress(runId, counts, "Processing " + sourceProductId);
 			log.atDebug()
 				.addKeyValue("event", "crawl.product.processing")
 				.addKeyValue("siteCode", site.code())
@@ -229,17 +289,20 @@ public class CrawlRunService {
 				if (exists) {
 					counts.updatedCount++;
 					logProductSaved(site, sourceProductId, "updated", detail, summary);
+					markProgress(runId, counts, "Updated " + sourceProductId);
 					return true;
 				}
 				else {
 					counts.createdCount++;
 					logProductSaved(site, sourceProductId, "created", detail, summary);
+					markProgress(runId, counts, "Created " + sourceProductId);
 				}
 			}
 			catch (RuntimeException exception) {
 				counts.failedCount++;
 				String failureMessage = failureMessage(exception);
 				counts.failureReasons.add(sourceProductId + ": " + failureMessage);
+				markProgress(runId, counts, "Failed " + sourceProductId + ": " + failureMessage);
 				log.atWarn()
 					.setCause(exception)
 					.addKeyValue("event", "crawl.product.failed")
@@ -250,6 +313,14 @@ public class CrawlRunService {
 			}
 		}
 		return false;
+	}
+
+	private void markProgress(Long runId, CrawlCounts counts, String message) {
+		if (runId == null || lifecycleService == null) {
+			return;
+		}
+		lifecycleService.markProgress(runId, counts.foundCount, counts.createdCount, counts.updatedCount,
+			counts.failedCount, message);
 	}
 
 	private void replaceMeasurements(ProductEntity product, CrawledProductDetail detail) {

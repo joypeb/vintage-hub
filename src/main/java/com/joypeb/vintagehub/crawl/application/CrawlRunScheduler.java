@@ -10,10 +10,10 @@ class CrawlRunScheduler {
 
 	private static final Logger log = LoggerFactory.getLogger(CrawlRunScheduler.class);
 
-	private final CrawlRunService service;
+	private final CrawlRunRequestService service;
 	private final CrawlRunScheduleProperties properties;
 
-	CrawlRunScheduler(CrawlRunService service, CrawlRunScheduleProperties properties) {
+	CrawlRunScheduler(CrawlRunRequestService service, CrawlRunScheduleProperties properties) {
 		this.service = service;
 		this.properties = properties;
 	}
@@ -38,10 +38,11 @@ class CrawlRunScheduler {
 				.addKeyValue("event", "crawl.schedule.site.started")
 				.addKeyValue("siteCode", siteCode)
 				.log("crawl.schedule.site.started");
-			CrawlRunResult result = service.requestScheduledRun(siteCode);
+			CrawlRunStatusResult result = service.requestScheduledRun(siteCode);
 			log.atInfo()
 				.addKeyValue("event", "crawl.schedule.site.completed")
 				.addKeyValue("siteCode", siteCode)
+				.addKeyValue("runId", result.runId())
 				.addKeyValue("createdCount", result.createdCount())
 				.addKeyValue("updatedCount", result.updatedCount())
 				.addKeyValue("failedCount", result.failedCount())

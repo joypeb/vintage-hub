@@ -72,6 +72,15 @@ public class CrawlRunEntity {
 	public void markRunning() {
 		this.status = CrawlRunStatus.RUNNING;
 		this.startedAt = Instant.now();
+		this.message = "Crawl run started.";
+	}
+
+	public void markProgress(int foundCount, int createdCount, int updatedCount, int failedCount, String message) {
+		this.foundCount = foundCount;
+		this.createdCount = createdCount;
+		this.updatedCount = updatedCount;
+		this.failedCount = failedCount;
+		this.message = message;
 	}
 
 	public void markSucceeded(int foundCount, int createdCount, int updatedCount, int failedCount, String message) {
@@ -92,6 +101,30 @@ public class CrawlRunEntity {
 
 	public CrawlRunStatus status() {
 		return status;
+	}
+
+	public Long id() {
+		return id;
+	}
+
+	public CrawlSiteEntity site() {
+		return site;
+	}
+
+	public int foundCount() {
+		return foundCount;
+	}
+
+	public int createdCount() {
+		return createdCount;
+	}
+
+	public int updatedCount() {
+		return updatedCount;
+	}
+
+	public int failedCount() {
+		return failedCount;
 	}
 
 	public String message() {

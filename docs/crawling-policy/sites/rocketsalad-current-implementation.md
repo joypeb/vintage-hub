@@ -11,18 +11,20 @@
 
 현재 로켓샐러드 크롤러는 `SiteCrawler` 구현체인 `RocketSaladCrawler`로 등록된다. 사이트 코드는 `rocketsalad`이다.
 
-관리자 API가 `CrawlRunService.requestManualRun(siteCode)`를 호출하면 다음 순서로 실행된다.
+관리자 API가 `CrawlRunRequestService.requestManualRun(siteCode)`를 호출하면 다음 순서로 실행된다.
 
 1. `crawl_site.code`로 사이트 설정을 조회한다.
 2. `CrawlerRegistry`에서 `rocketsalad` 크롤러를 찾는다.
-3. `crawl_run`을 `MANUAL` 실행으로 생성하고 `RUNNING` 상태로 바꾼다.
-4. 크롤러가 제공하는 초기 커서를 기준으로 카테고리별 목록 수집을 시작한다.
-5. 각 목록의 `nextCursor`를 따라 다음 페이지를 수집하되, 초기 커서당 최대 3페이지만 수집한다.
-6. 목록에서 찾은 상품이 이미 DB에 있고 저장값이 완전하면 해당 카테고리 수집을 멈춘다.
-7. 신규 상품이거나 저장값이 불완전한 기존 상품이면 `fetchDetail(site, summary.ref())`를 호출해 상품을 저장 또는 보정한다.
-8. `site + sourceProductId` 기준으로 정상 기존 상품을 만나면 중복 지점으로 보고 중단한다.
-9. 상세에서 추출한 실측은 기존 실측을 삭제한 뒤 새로 저장한다.
-10. 전체 실행 결과를 `SUCCEEDED` 또는 `FAILED`로 기록한다.
+3. `crawl_run`을 `MANUAL` 실행의 `RUNNING` 상태로 먼저 저장하고 `runId`를 반환한다.
+4. 백그라운드 실행기가 `CrawlRunService.executeRun(runId, siteCode)`를 호출한다.
+5. 크롤러가 제공하는 초기 커서를 기준으로 카테고리별 목록 수집을 시작한다.
+6. 각 목록의 `nextCursor`를 따라 다음 페이지를 수집하되, 초기 커서당 최대 3페이지만 수집한다.
+7. 목록에서 찾은 상품이 이미 DB에 있고 저장값이 완전하면 해당 카테고리 수집을 멈춘다.
+8. 신규 상품이거나 저장값이 불완전한 기존 상품이면 `fetchDetail(site, summary.ref())`를 호출해 상품을 저장 또는 보정한다.
+9. 상품 처리 중 `crawl_run`의 카운트와 메시지를 갱신하고 SSE 이벤트를 발행한다.
+10. `site + sourceProductId` 기준으로 정상 기존 상품을 만나면 중복 지점으로 보고 중단한다.
+11. 상세에서 추출한 실측은 기존 실측을 삭제한 뒤 새로 저장한다.
+12. 전체 실행 결과를 `SUCCEEDED` 또는 `FAILED`로 기록한다.
 
 상품 하나의 상세 수집이 실패해도 전체 실행은 중단하지 않는다. 해당 상품은 `failedCount`가 증가하고 실패 원인은 `crawl_run.message`에 요약된다. 반면 목록 수집이나 실행 전체에서 `RuntimeException`이 발생하면 실행 상태를 `FAILED`로 기록한 뒤 예외를 다시 던진다.
 

@@ -2,8 +2,8 @@ package com.joypeb.vintagehub.auth;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.joypeb.vintagehub.crawl.application.CrawlRunResult;
-import com.joypeb.vintagehub.crawl.application.CrawlRunService;
+import com.joypeb.vintagehub.crawl.application.CrawlRunRequestService;
+import com.joypeb.vintagehub.crawl.application.CrawlRunStatusResult;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -34,7 +34,7 @@ class AdminAuthIntegrationTest {
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@MockitoBean
-	private CrawlRunService crawlRunService;
+	private CrawlRunRequestService crawlRunRequestService;
 
 	@Autowired
 	private AdminUserRepository adminUserRepository;
@@ -142,8 +142,8 @@ class AdminAuthIntegrationTest {
 
 	@Test
 	void adminApiAcceptsRequestWithJwt() throws Exception {
-		when(crawlRunService.requestManualRun("rocketsalad"))
-			.thenReturn(new CrawlRunResult("rocketsalad", "SUCCEEDED", 2, 1, 1, 0, "Crawl run completed."));
+		when(crawlRunRequestService.requestManualRun("rocketsalad"))
+			.thenReturn(new CrawlRunStatusResult(42L, "rocketsalad", "RUNNING", 0, 0, 0, 0, "Crawl run started."));
 		String loginResponse = mockMvc.perform(post("/api/admin/auth/login")
 				.contentType(MediaType.APPLICATION_JSON)
 				.content("""

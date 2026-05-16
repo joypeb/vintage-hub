@@ -574,7 +574,7 @@ GET /api/products/rocketsalad/521529
 
 ## 6. 관리자 수동 크롤 실행 요청
 
-지정한 사이트의 수동 크롤을 실행한다. 현재 구현은 비동기 작업 ID를 반환하지 않고, 서비스가 크롤 수행 후 집계 결과를 `202 Accepted`로 반환한다.
+지정한 사이트의 수동 크롤을 백그라운드로 시작한다. API는 `crawl_run`을 `RUNNING` 상태로 먼저 저장하고 `runId`를 `202 Accepted`로 반환한다.
 JWT Bearer 인증이 필요하다.
 
 ### 요청
@@ -609,13 +609,14 @@ Authorization: Bearer {accessToken}
 {
   "success": true,
   "data": {
+    "runId": 42,
     "siteCode": "rocketsalad",
-    "status": "SUCCEEDED",
-    "foundCount": 2,
-    "createdCount": 1,
-    "updatedCount": 1,
+    "status": "RUNNING",
+    "foundCount": 0,
+    "createdCount": 0,
+    "updatedCount": 0,
     "failedCount": 0,
-    "message": "Crawl run completed."
+    "message": "Crawl run started."
   }
 }
 ```
@@ -624,13 +625,14 @@ Authorization: Bearer {accessToken}
 
 | 필드 | 타입 | Nullable | 설명 |
 | --- | --- | --- | --- |
+| `runId` | integer | N | 크롤링 실행 ID |
 | `siteCode` | string | N | 크롤링 사이트 코드 |
-| `status` | string enum | N | 크롤 실행 상태. 현재 응답 예: `SUCCEEDED`, 실패 시 내부 실행 기록은 `FAILED` |
+| `status` | string enum | N | 크롤 실행 상태. 시작 응답은 `RUNNING` |
 | `foundCount` | integer | N | 크롤 목록에서 발견한 상품 수 |
 | `createdCount` | integer | N | 신규 생성된 상품 수 |
 | `updatedCount` | integer | N | 기존 상품 중 갱신된 상품 수 |
 | `failedCount` | integer | N | 개별 상품 처리 실패 수 |
-| `message` | string | Y | 실행 결과 메시지. 일부 상품 실패 시 실패 사유가 포함될 수 있음 |
+| `message` | string | Y | 실행 상태 메시지 |
 
 ### 오류 응답 예시
 
@@ -646,6 +648,51 @@ Authorization: Bearer {accessToken}
   }
 }
 ```
+
+- HTTP Status: `409 Conflict`
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ERROR_005",
+    "description": "요청한 리소스 상태와 충돌합니다.",
+    "message": "Crawl run is already active: rocketsalad"
+  }
+}
+```
+
+### 진행 상태 조회
+
+관리자 화면이 이미 실행 중인 크롤링 상태를 조회할 때 사용한다. 페이지 진입 시 이 API로 현재 스냅샷을 받은 뒤 SSE를 구독한다.
+
+```http
+GET /api/admin/crawl-runs/{runId}
+Authorization: Bearer {accessToken}
+```
+
+응답 데이터 타입은 수동 크롤 실행 요청의 응답 데이터 타입과 같다.
+
+### 실행 중인 크롤링 목록 조회
+
+현재 `PENDING` 또는 `RUNNING` 상태인 크롤링 실행 목록을 조회한다.
+
+```http
+GET /api/admin/crawl-runs/active
+Authorization: Bearer {accessToken}
+```
+
+### 진행 상태 SSE 구독
+
+특정 크롤링 실행의 진행 상태를 서버 전송 이벤트로 구독한다.
+
+```http
+GET /api/admin/crawl-runs/{runId}/events
+Accept: text/event-stream
+Authorization: Bearer {accessToken}
+```
+
+이벤트 이름은 `crawl-run-progress`이고, 이벤트 데이터는 수동 크롤 실행 요청의 응답 데이터 타입과 같다.
 
 ## 7. 관리자 상품 품절 여부 수동 확인
 

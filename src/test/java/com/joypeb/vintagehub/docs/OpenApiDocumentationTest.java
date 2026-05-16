@@ -1,7 +1,7 @@
 package com.joypeb.vintagehub.docs;
 
-import com.joypeb.vintagehub.crawl.application.CrawlRunResult;
-import com.joypeb.vintagehub.crawl.application.CrawlRunService;
+import com.joypeb.vintagehub.crawl.application.CrawlRunRequestService;
+import com.joypeb.vintagehub.crawl.application.CrawlRunStatusResult;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,13 +22,13 @@ class OpenApiDocumentationTest {
 	private WebApplicationContext webApplicationContext;
 
 	@MockitoBean
-	private CrawlRunService crawlRunService;
+	private CrawlRunRequestService crawlRunRequestService;
 
 	@Test
 	void exposesOpenApiDocsForCrawlRunApi() throws Exception {
 		MockMvc mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
-		when(crawlRunService.requestManualRun("rocketsalad"))
-			.thenReturn(new CrawlRunResult("rocketsalad", "SUCCEEDED", 1, 1, 0, 0, "Crawl run completed."));
+		when(crawlRunRequestService.requestManualRun("rocketsalad"))
+			.thenReturn(new CrawlRunStatusResult(42L, "rocketsalad", "RUNNING", 0, 0, 0, 0, "Crawl run started."));
 
 		mockMvc.perform(get("/v3/api-docs"))
 			.andExpect(status().isOk())
@@ -41,6 +41,9 @@ class OpenApiDocumentationTest {
 			.andExpect(jsonPath("$.paths['/api/admin/auth/login'].post").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/auth/password-hash'].post").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/crawl-sites/{siteCode}/crawl-runs'].post").exists())
+			.andExpect(jsonPath("$.paths['/api/admin/crawl-runs/{runId}'].get").exists())
+			.andExpect(jsonPath("$.paths['/api/admin/crawl-runs/active'].get").exists())
+			.andExpect(jsonPath("$.paths['/api/admin/crawl-runs/{runId}/events'].get").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/products/{productId}/availability-check'].post").exists());
 	}
 }

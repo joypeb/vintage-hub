@@ -2,6 +2,7 @@ package com.joypeb.vintagehub.common.api;
 
 import com.joypeb.vintagehub.auth.InvalidAdminCredentialsException;
 import com.joypeb.vintagehub.auth.PasswordHashApiDisabledException;
+import com.joypeb.vintagehub.crawl.application.CrawlRunAlreadyActiveException;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -41,6 +42,20 @@ class GlobalExceptionHandler {
 			.log("api.error.handled");
 		return ResponseEntity.status(HttpStatus.NOT_FOUND)
 			.body(ApiResponse.error(ErrorCode.NOT_FOUND, exception.getMessage()));
+	}
+
+	@ExceptionHandler(CrawlRunAlreadyActiveException.class)
+	ResponseEntity<ApiResponse<Void>> handleCrawlRunAlreadyActiveException(CrawlRunAlreadyActiveException exception,
+			HttpServletRequest request) {
+		log.atWarn()
+			.addKeyValue("event", "api.error.handled")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 409)
+			.addKeyValue("errorCode", ErrorCode.CONFLICT)
+			.addKeyValue("reason", exception.getMessage())
+			.log("api.error.handled");
+		return ResponseEntity.status(HttpStatus.CONFLICT)
+			.body(ApiResponse.error(ErrorCode.CONFLICT, exception.getMessage()));
 	}
 
 	@ExceptionHandler(InvalidAdminCredentialsException.class)

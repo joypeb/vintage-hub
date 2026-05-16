@@ -13,7 +13,7 @@ class CrawlRunSchedulerTest {
 
 	@Test
 	void runScheduledCrawlsRequestsConfiguredSites() {
-		CrawlRunService service = mock(CrawlRunService.class);
+		CrawlRunRequestService service = mock(CrawlRunRequestService.class);
 		CrawlRunScheduler scheduler = new CrawlRunScheduler(service,
 			new CrawlRunScheduleProperties(true, Duration.ofHours(1), List.of("rocketsalad")));
 
@@ -24,7 +24,7 @@ class CrawlRunSchedulerTest {
 
 	@Test
 	void runScheduledCrawlsSkipsWhenDisabled() {
-		CrawlRunService service = mock(CrawlRunService.class);
+		CrawlRunRequestService service = mock(CrawlRunRequestService.class);
 		CrawlRunScheduler scheduler = new CrawlRunScheduler(service,
 			new CrawlRunScheduleProperties(false, Duration.ofHours(1), List.of("rocketsalad")));
 
