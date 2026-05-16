@@ -1,38 +1,61 @@
 spring:
   application:
+    # 애플리케이션 식별 이름. 로그, actuator, 외부 설정에서 사용된다.
     name: vintage-hub-be
   jpa:
     hibernate:
+      # Flyway 마이그레이션으로 스키마를 관리하므로 Hibernate는 검증만 수행한다.
       ddl-auto: validate
+    # 요청 처리 이후 지연 로딩으로 DB 세션이 열려 있는 것을 막는다.
     open-in-view: false
     properties:
       hibernate:
+        # PostgreSQL 전용 SQL 방언을 명시한다.
         dialect: org.hibernate.dialect.PostgreSQLDialect
   flyway:
+    # 애플리케이션 시작 시 db/migration 스크립트를 적용한다.
     enabled: true
 
 vintage-hub:
   crawl:
+    # 상품 목록/상세 크롤링 요청 사이에 둘 기본 대기 시간(ms).
+    request-delay-ms: 1000
     schedule:
+      # 사이트별 정기 상품 수집 배치 활성화 여부.
       enabled: true
+      # 정기 상품 수집 배치 실행 주기.
       fixed-rate: 1h
+      # 정기 수집 대상 사이트 코드 목록.
       site-codes:
         - rocketsalad
   admin:
+    # 관리자 비밀번호 해시 생성 API 활성화 여부. 기본값은 비활성화다.
     password-hash-api-enabled: ${VINTAGE_HUB_ADMIN_PASSWORD_HASH_API_ENABLED:false}
   jwt:
+    # JWT 서명 비밀키. 운영 환경에서는 반드시 환경 변수로 주입해야 한다.
     secret: ${VINTAGE_HUB_JWT_SECRET:}
+    # JWT access token 유효 시간(초).
     access-token-validity-seconds: ${VINTAGE_HUB_JWT_ACCESS_TOKEN_VALIDITY_SECONDS:1800}
   product:
     filter-options:
-      cache-ttl: 60s
+      # 상품 필터 옵션 응답 캐시 유지 시간.
+      cache-ttl: 1h
     availability-check:
+      # 상품 품절/재고 상태 확인 배치 활성화 여부.
       enabled: true
+      # 품절/재고 상태 확인 배치 실행 주기.
       fixed-rate: 10m
+      # 1회 배치에서 사이트별로 확인할 최대 상품 수.
       batch-size: 20
+      # 동시에 품절/재고 확인을 실행할 최대 사이트 수.
       max-parallel-sites: 3
+      # 원본 사이트에 상품별 확인 요청을 보내기 전 대기 시간.
       request-delay: 1s
+      # AVAILABLE 확인 후 다음 확인까지의 간격.
       available-ttl: 6h
+      # SOLD_OUT 확인 후 다음 확인까지의 간격.
       sold-out-ttl: 7d
+      # UNKNOWN 확인 후 다음 확인까지의 간격.
       unknown-ttl: 1h
+      # 확인 실패 또는 CHECK_FAILED 처리 후 다음 확인까지의 간격.
       check-failed-ttl: 2h
