@@ -94,6 +94,7 @@ public class CrawlRunService {
 
 	@Transactional
 	public CrawlRunResult executeRun(Long runId, String siteCode) {
+		// 비동기 요청 서비스가 미리 만든 실행 건을 실제 크롤링 작업으로 전환한다.
 		log.atInfo()
 			.addKeyValue("event", "crawl.run.started")
 			.addKeyValue("runId", runId)
@@ -105,6 +106,7 @@ public class CrawlRunService {
 		SiteCrawler crawler = crawlerRegistry.requireBySiteCode(siteCode);
 
 		try {
+			// 상품 저장 로직은 실행 방식과 무관하게 동일하게 사용하고, 결과 카운트만 실행 건에 반영한다.
 			CrawlCounts counts = saveProducts(site, crawler, runId);
 			String message = successMessage(counts);
 			lifecycleService.markSucceeded(runId, counts.foundCount, counts.createdCount, counts.updatedCount,
@@ -137,6 +139,7 @@ public class CrawlRunService {
 	}
 
 	private CrawlRunResult requestRun(String siteCode, CrawlRunFactory runFactory) {
+		// 동기 실행 경로에서는 실행 건 생성부터 상품 수집까지 한 트랜잭션 흐름에서 처리한다.
 		log.atInfo()
 			.addKeyValue("event", "crawl.run.started")
 			.addKeyValue("siteCode", siteCode)
@@ -149,6 +152,7 @@ public class CrawlRunService {
 		run.markRunning();
 
 		try {
+			// 수동/스케줄 실행은 생성 방식만 다르고 이후 저장 로직은 공유한다.
 			CrawlCounts counts = saveProducts(site, crawler);
 			String message = successMessage(counts);
 			run.markSucceeded(counts.foundCount, counts.createdCount, counts.updatedCount, counts.failedCount,
@@ -190,6 +194,7 @@ public class CrawlRunService {
 	private CrawlCounts saveProducts(CrawlSiteEntity site, SiteCrawler crawler, Long runId) {
 		CrawlCounts counts = new CrawlCounts();
 		CrawlTargetSite targetSite = new CrawlTargetSite(site.code(), site.baseUrl());
+		// 사이트별 크롤러가 카테고리나 첫 페이지 같은 시작 커서를 결정한다.
 		List<CrawlCursor> initialCursors = crawler.initialCursors();
 		log.atInfo()
 			.addKeyValue("event", "crawl.cursors.resolved")
@@ -199,6 +204,7 @@ public class CrawlRunService {
 			.log("crawl.cursors.resolved");
 
 		if (initialCursors.isEmpty()) {
+			// 커서가 없는 사이트는 기본 목록 URL 하나만 순회한다.
 			collectCursor(site, crawler, targetSite, null, counts, runId);
 			return counts;
 		}
@@ -211,6 +217,7 @@ public class CrawlRunService {
 	private void collectCursor(CrawlSiteEntity site, SiteCrawler crawler, CrawlTargetSite targetSite,
 			CrawlCursor initialCursor, CrawlCounts counts, Long runId) {
 		CrawlCursor cursor = initialCursor;
+		// 신규 상품 수집 목적이므로 시작 커서당 최대 페이지 수를 제한해 외부 사이트 부하를 줄인다.
 		for (int pageCount = 0; pageCount < MAX_PAGES_PER_INITIAL_CURSOR; pageCount++) {
 			log.atInfo()
 				.addKeyValue("event", "crawl.cursor.fetch.started")
@@ -230,14 +237,17 @@ public class CrawlRunService {
 				.log("crawl.cursor.fetch.succeeded");
 			boolean stopPaging = savePageProducts(site, crawler, targetSite, listResult.products(), counts, runId);
 			if (stopPaging) {
+				// 이미 저장된 정상 상품을 만나면 최신순 목록의 이후 페이지도 기존 데이터로 간주한다.
 				logCursorStopped(site, cursor, "existing-product");
 				return;
 			}
 			if (listResult.nextCursor() == null) {
+				// 다음 커서가 없으면 사이트가 제공한 마지막 페이지로 본다.
 				logCursorStopped(site, cursor, "no-next-cursor");
 				return;
 			}
 			if (listResult.products().isEmpty()) {
+				// 빈 목록은 다음 페이지를 더 호출해도 신규 상품이 없을 가능성이 높다.
 				logCursorStopped(site, cursor, "empty-page");
 				return;
 			}
@@ -249,6 +259,7 @@ public class CrawlRunService {
 			List<CrawledProductSummary> summaries, CrawlCounts counts, Long runId) {
 		Instant collectedAt = Instant.now();
 		for (CrawledProductSummary summary : summaries) {
+			// 목록에서 발견한 개수는 상세 수집 성공 여부와 별도로 집계한다.
 			counts.foundCount++;
 			String sourceProductId = summary.ref().sourceProductId();
 			markProgress(runId, counts, "Processing " + sourceProductId);
@@ -260,6 +271,7 @@ public class CrawlRunService {
 				.log("crawl.product.processing");
 			var existingProduct = productRepository.findBySiteAndSourceProductId(site, summary.ref().sourceProductId());
 			if (existingProduct.isPresent() && !existingProduct.get().needsCrawlRepair()) {
+				// 정상 저장된 기존 상품은 최신순 경계로 사용해 불필요한 상세 요청을 중단한다.
 				log.atInfo()
 					.addKeyValue("event", "crawl.product.skipped")
 					.addKeyValue("siteCode", site.code())
@@ -271,6 +283,7 @@ public class CrawlRunService {
 			}
 			try {
 				if (existingProduct.isPresent()) {
+					// 과거 수집 데이터가 불완전하면 같은 상품이라도 상세를 다시 읽어 보수한다.
 					log.atInfo()
 						.addKeyValue("event", "crawl.product.repair.started")
 						.addKeyValue("siteCode", site.code())
@@ -281,12 +294,14 @@ public class CrawlRunService {
 				CrawledProductDetail detail = crawler.fetchDetail(targetSite, summary.ref());
 				validateProduct(detail, summary);
 				boolean exists = existingProduct.isPresent();
+				// 기존 상품은 갱신하고, 신규 상품은 사이트+원본 ID 기준으로 새 엔티티를 만든다.
 				ProductEntity product = existingProduct
 					.orElseGet(() -> ProductEntity.create(site, detail.ref().sourceProductId()));
 				product.updateFrom(detail, summary, collectedAt);
 				ProductEntity savedProduct = productRepository.save(product);
 				replaceMeasurements(savedProduct, detail);
 				if (exists) {
+					// 복구 대상 상품을 고쳤다면 이후 페이지는 기존 데이터 영역으로 간주해 중단한다.
 					counts.updatedCount++;
 					logProductSaved(site, sourceProductId, "updated", detail, summary);
 					markProgress(runId, counts, "Updated " + sourceProductId);
@@ -299,6 +314,7 @@ public class CrawlRunService {
 				}
 			}
 			catch (RuntimeException exception) {
+				// 개별 상품 실패는 전체 크롤링 실패로 올리지 않고 실패 카운트와 메시지에 누적한다.
 				counts.failedCount++;
 				String failureMessage = failureMessage(exception);
 				counts.failureReasons.add(sourceProductId + ": " + failureMessage);
@@ -317,6 +333,7 @@ public class CrawlRunService {
 
 	private void markProgress(Long runId, CrawlCounts counts, String message) {
 		if (runId == null || lifecycleService == null) {
+			// 동기 실행이나 단위 테스트 경로에서는 별도 진행 이벤트가 없을 수 있다.
 			return;
 		}
 		lifecycleService.markProgress(runId, counts.foundCount, counts.createdCount, counts.updatedCount,
@@ -324,9 +341,11 @@ public class CrawlRunService {
 	}
 
 	private void replaceMeasurements(ProductEntity product, CrawledProductDetail detail) {
+		// 크롤러가 읽은 최신 실측값을 기준으로 자동 수집 실측 정보를 통째로 교체한다.
 		measurementRepository.deleteByProduct(product);
 		Map<String, String> measurements = detail.measurements();
 		if (measurements == null || measurements.isEmpty()) {
+			// 실측 정보가 없으면 기존 자동 실측값만 제거하고 종료한다.
 			return;
 		}
 		List<ProductMeasurementEntity> entities = new ArrayList<>();
@@ -339,6 +358,7 @@ public class CrawlRunService {
 
 	private void delayBeforeRequest(String siteCode, String requestType, String target) {
 		if (requestDelay == null || requestDelay.isZero() || requestDelay.isNegative()) {
+			// 설정상 지연이 없으면 테스트와 로컬 실행을 빠르게 유지한다.
 			return;
 		}
 		log.atDebug()
@@ -376,6 +396,7 @@ public class CrawlRunService {
 
 	private void validateProduct(CrawledProductDetail detail, CrawledProductSummary summary) {
 		if (firstText(detail.name(), summary.name()) == null) {
+			// 상품명은 목록 또는 상세 중 한쪽에서 반드시 확보되어야 검색/표시가 가능하다.
 			throw new IllegalStateException("blank product name");
 		}
 	}
@@ -384,6 +405,7 @@ public class CrawlRunService {
 		if (counts.failureReasons.isEmpty()) {
 			return "Crawl run completed.";
 		}
+		// DB 메시지 컬럼이 과도하게 커지지 않도록 실패 사유를 제한 길이로 보관한다.
 		return truncate("Crawl run completed with failures: " + String.join("; ", counts.failureReasons), 1000);
 	}
 
@@ -426,6 +448,7 @@ public class CrawlRunService {
 			Thread.sleep(duration.toMillis());
 		}
 		catch (InterruptedException exception) {
+			// 인터럽트 상태를 복원해 상위 실행기가 중단 신호를 감지할 수 있게 한다.
 			Thread.currentThread().interrupt();
 			throw new IllegalStateException("crawl request delay interrupted", exception);
 		}

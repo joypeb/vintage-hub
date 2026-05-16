@@ -63,6 +63,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 
 	@Override
 	public List<CrawlCursor> initialCursors() {
+		// 로켓샐러드의 주요 카테고리를 각각 최신순 1페이지부터 수집한다.
 		return List.of(
 			new CrawlCursor("TOP:1"),
 			new CrawlCursor("OUTER:1"),
@@ -74,6 +75,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 
 	@Override
 	public CrawlListResult fetchList(CrawlTargetSite site, CrawlCursor cursor) {
+		// 커서는 "카테고리:페이지" 형식이며 모바일 목록 URL의 xcode/page로 변환된다.
 		ListCursor listCursor = ListCursor.parse(cursor);
 		URI listUrl = mobileListUrl(site.baseUrl(), listCursor);
 		log.atDebug()
@@ -83,6 +85,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 			.addKeyValue("url", listUrl)
 			.log("crawl.rocketsalad.list.fetch.started");
 		Document document = Jsoup.parse(pageClient.get(listUrl), listUrl.toString());
+		// 상품 링크를 기준으로 카드 정보를 추출하고 같은 branduid가 중복되면 제거한다.
 		List<CrawledProductSummary> products = document.select("a[href*=/m/product.html?branduid=]").stream()
 			.map(anchor -> toSummary(site.baseUrl(), anchor))
 			.flatMap(Optional::stream)
@@ -96,11 +99,13 @@ public class RocketSaladCrawler implements SiteCrawler {
 			.addKeyValue("productCount", products.size())
 			.log("crawl.rocketsalad.list.parsed");
 
+		// 목록 HTML에는 마지막 페이지 신호가 없으므로 다음 페이지 커서를 항상 넘기고 상위 서비스가 중단한다.
 		return new CrawlListResult(products, new CrawlCursor(listCursor.category() + ":" + (listCursor.page() + 1)));
 	}
 
 	@Override
 	public CrawledProductDetail fetchDetail(CrawlTargetSite site, CrawledProductRef productRef) {
+		// 상세 페이지는 모바일 URL이 구조화 데이터와 DOM 파싱에 필요한 정보를 더 안정적으로 제공한다.
 		URI mobileDetailUrl = mobileDetailUrl(site.baseUrl(), productRef.sourceProductId());
 		log.atDebug()
 			.addKeyValue("event", "crawl.rocketsalad.detail.fetch.started")
@@ -111,8 +116,10 @@ public class RocketSaladCrawler implements SiteCrawler {
 		Document document = Jsoup.parse(pageClient.get(mobileDetailUrl), mobileDetailUrl.toString());
 		Optional<JsonNode> productJson = productJson(document);
 		JsonNode offers = productJson.map(json -> json.path("offers")).orElse(null);
+		// 실측값은 상세 이미지 영역의 텍스트에 섞여 있으므로 공백을 정리한 뒤 정규식으로 읽는다.
 		String detailText = normalize(document.selectFirst("#detail_img1") == null ? "" : document.selectFirst("#detail_img1").text());
 
+		// JSON-LD를 우선 사용하되 누락 필드는 기존 DOM 셀렉터로 보완한다.
 		CrawledProductDetail detail = new CrawledProductDetail(
 			productRef,
 			firstText(productJson.map(json -> json.path("name").asText(null)).orElse(null),
@@ -149,10 +156,12 @@ public class RocketSaladCrawler implements SiteCrawler {
 		String href = anchor.attr("abs:href");
 		String sourceProductId = sourceProductId(href).orElse(null);
 		if (sourceProductId == null) {
+			// branduid가 없는 링크는 상품 식별자로 저장할 수 없어 건너뛴다.
 			return Optional.empty();
 		}
 		Element productCard = anchor.closest("li");
 		Element productScope = productCard == null ? anchor : productCard;
+		// 카드 영역과 앵커 내부를 모두 확인해 테마별 마크업 차이를 흡수한다.
 		String name = firstText(productScope.select(".pname").text(), anchor.select(".pname").text(), anchor.attr("title"));
 		URI imageUrl = absoluteUrl(baseUrl, firstText(
 			productScope.select(".MS_prod_mobile_image").attr("src"),
@@ -164,6 +173,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 	}
 
 	private Optional<JsonNode> productJson(Document document) {
+		// JSON-LD 스크립트가 여러 개일 수 있어 Product 타입이 나올 때까지 순회한다.
 		for (Element script : document.select("script[type=application/ld+json]")) {
 			Optional<JsonNode> product = parseProductJson(script.data().isBlank() ? script.html() : script.data());
 			if (product.isPresent()) {
@@ -178,6 +188,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 			return findProductJson(objectMapper.readTree(json));
 		}
 		catch (Exception exception) {
+			// 일부 페이지는 JSON-LD 안의 작은따옴표를 이스케이프해 표준 JSON 파서가 실패한다.
 			log.atDebug()
 				.addKeyValue("event", "crawl.rocketsalad.jsonld.parse.retry")
 				.addKeyValue("reason", exception.getMessage())
@@ -186,6 +197,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 				return findProductJson(objectMapper.readTree(normalizeJsonLd(json)));
 			}
 			catch (Exception retryException) {
+				// 구조화 데이터가 깨져도 DOM 파싱으로 계속 진행할 수 있게 빈 값으로 돌려준다.
 				log.atWarn()
 					.addKeyValue("event", "crawl.rocketsalad.jsonld.parse.failed")
 					.addKeyValue("fallback", "dom")
@@ -205,6 +217,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 			return Optional.empty();
 		}
 		if (node.isArray()) {
+			// 배열형 JSON-LD에서는 자식 노드 중 Product 타입을 재귀적으로 찾는다.
 			for (JsonNode child : node) {
 				Optional<JsonNode> product = findProductJson(child);
 				if (product.isPresent()) {
@@ -217,12 +230,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 		}
 		JsonNode graph = node.path("@graph");
 		if (graph.isArray()) {
+			// @graph 안에 실제 Product 노드가 들어가는 JSON-LD 구조를 지원한다.
 			return findProductJson(graph);
 		}
 		return Optional.empty();
 	}
 
 	private ProductAvailability availability(Optional<JsonNode> productJson, Document document) {
+		// 구조화 데이터의 schema.org availability가 가장 신뢰도가 높다.
 		String availability = productJson
 			.map(json -> json.path("offers").path("availability").asText(""))
 			.orElse("");
@@ -233,12 +248,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 			return ProductAvailability.SOLD_OUT;
 		}
 		if (!document.select(".is_soldout, .sold-out").isEmpty() || document.text().contains("SOLD OUT")) {
+			// JSON-LD가 없거나 부정확한 경우 화면의 품절 표시를 보조 신호로 사용한다.
 			return ProductAvailability.SOLD_OUT;
 		}
 		return ProductAvailability.UNKNOWN;
 	}
 
 	private URI firstImage(URI baseUrl, Optional<JsonNode> productJson, Document document) {
+		// 대표 이미지는 JSON-LD, 상세 DOM, OG 태그 순서로 신뢰도를 둔다.
 		String jsonImage = productJson.map(json -> {
 			JsonNode image = json.path("image");
 			if (image.isArray() && !image.isEmpty()) {
@@ -258,12 +275,14 @@ public class RocketSaladCrawler implements SiteCrawler {
 		Map<String, String> values = new LinkedHashMap<>();
 		Matcher matcher = MEASUREMENT_PATTERN.matcher(text);
 		while (matcher.find()) {
+			// 같은 부위가 여러 번 나오면 뒤쪽 값을 최신/최종 표기로 본다.
 			values.put(matcher.group(1), matcher.group(2));
 		}
 		return values;
 	}
 
 	private URI mobileListUrl(URI baseUrl, ListCursor cursor) {
+		// 내부 카테고리 코드를 로켓샐러드 모바일 목록의 xcode 값으로 변환한다.
 		String xcode = CATEGORY_XCODES.getOrDefault(cursor.category(), CATEGORY_XCODES.get("PANTS"));
 		return baseUrl.resolve("/m/product_list.html?xcode=" + xcode + "&type=X&viewtype=gallery&page=" + cursor.page() + "&sort=order");
 	}
@@ -289,6 +308,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 			return null;
 		}
 		if (url.startsWith("//")) {
+			// 프로토콜 상대 URL은 기준 URL의 scheme을 붙여 절대 URL로 만든다.
 			return URI.create(baseUrl.getScheme() + ":" + url);
 		}
 		return baseUrl.resolve(url);
@@ -300,6 +320,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 	}
 
 	private BigDecimal firstPrice(String... values) {
+		// 여러 후보 가격 중 숫자로 파싱되는 첫 값을 대표 가격으로 사용한다.
 		for (String value : values) {
 			BigDecimal parsedPrice = price(value);
 			if (parsedPrice != null) {
@@ -313,6 +334,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 		if (value == null || value.isBlank()) {
 			return null;
 		}
+		// 통화 기호, 쉼표, 원문 텍스트를 제거하고 숫자/소수점만 남긴다.
 		String digits = value.replaceAll("[^0-9.]", "");
 		if (digits.isBlank()) {
 			return null;
@@ -321,6 +343,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 	}
 
 	private String firstText(String... values) {
+		// 후보 문자열을 정규화한 뒤 가장 먼저 비어 있지 않은 값을 선택한다.
 		for (String value : values) {
 			String normalizedValue = normalize(value);
 			if (normalizedValue != null && !normalizedValue.isBlank()) {
@@ -340,6 +363,7 @@ public class RocketSaladCrawler implements SiteCrawler {
 	private record ListCursor(String category, int page) {
 
 		private static ListCursor parse(CrawlCursor cursor) {
+			// 잘못된 커서가 들어오면 기본 카테고리 첫 페이지로 복구해 크롤링을 계속한다.
 			String value = cursor == null || cursor.value() == null || cursor.value().isBlank() ? DEFAULT_CURSOR : cursor.value();
 			String[] parts = value.split(":", 2);
 			if (parts.length != 2) {

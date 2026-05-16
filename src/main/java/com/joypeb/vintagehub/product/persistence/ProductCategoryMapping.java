@@ -38,12 +38,15 @@ final class ProductCategoryMapping {
 	static ProductCategoryMappingResult from(String siteCode, String sourceCategoryName, String productName,
 			String description) {
 		if (!"rocketsalad".equals(siteCode)) {
+			// 현재 매핑 규칙은 로켓샐러드 카테고리 체계에만 맞춰져 있다.
 			return ProductCategoryMappingResult.empty();
 		}
 		ProductCategoryMappingResult sourceCategoryMapping = fromSourceCategory(sourceCategoryName);
 		if (!sourceCategoryMapping.isEmpty()) {
+			// 원본 카테고리가 해석되면 키워드 추정보다 높은 신뢰도로 사용한다.
 			return sourceCategoryMapping;
 		}
+		// 원본 카테고리가 없거나 알 수 없으면 상품명/설명 키워드로 보조 분류한다.
 		return fromKeywordDictionary(productName, description);
 	}
 
@@ -51,6 +54,7 @@ final class ProductCategoryMapping {
 		if (isBlank(sourceCategoryName)) {
 			return ProductCategoryMappingResult.empty();
 		}
+		// "TOP > SHIRT" 같은 원본 문자열을 대분류/중분류 두 조각으로 정규화한다.
 		String[] parts = normalizedParts(sourceCategoryName);
 		String majorCategory = parts[0];
 		String middleCategory = parts[1];
@@ -64,6 +68,7 @@ final class ProductCategoryMapping {
 	}
 
 	private static ProductCategoryMappingResult top(String middleCategory) {
+		// TOP 대분류는 중분류 키워드로 세부 상의 카테고리를 판별한다.
 		if ("sweat shirt".equals(middleCategory)) {
 			return new ProductCategoryMappingResult("상의", "스웻", HIGH_CONFIDENCE);
 		}
@@ -83,6 +88,7 @@ final class ProductCategoryMapping {
 	}
 
 	private static ProductCategoryMappingResult acc(String middleCategory) {
+		// ACC 안에는 신발/가방처럼 별도 표준 대분류로 보낼 항목도 포함된다.
 		return switch (middleCategory) {
 			case "cap" -> new ProductCategoryMappingResult("액세서리", "모자", HIGH_CONFIDENCE);
 			case "etc,mix" -> new ProductCategoryMappingResult("액세서리", "기타", HIGH_CONFIDENCE);
@@ -99,6 +105,7 @@ final class ProductCategoryMapping {
 		String text = normalizeText(productName, description);
 		for (CategoryKeywordRule rule : KEYWORD_RULES) {
 			if (rule.matches(text)) {
+				// 먼저 선언된 규칙을 우선 적용하므로 더 구체적인 키워드를 앞쪽에 둔다.
 				return rule.toResult();
 			}
 		}
@@ -109,6 +116,7 @@ final class ProductCategoryMapping {
 		StringBuilder builder = new StringBuilder();
 		for (String value : values) {
 			if (!isBlank(value)) {
+				// 대소문자 차이를 없애고 상품명과 설명을 하나의 검색 문자열로 합친다.
 				builder.append(' ').append(value.toLowerCase(Locale.ROOT));
 			}
 		}
@@ -125,6 +133,7 @@ final class ProductCategoryMapping {
 	}
 
 	private static String[] normalizedParts(String sourceCategoryName) {
+		// 로켓샐러드 카테고리의 "(대)", "(중)" 표기와 중복 공백을 제거한다.
 		String normalized = sourceCategoryName
 			.toLowerCase(Locale.ROOT)
 			.replace("(대)", "")
@@ -145,6 +154,7 @@ final class ProductCategoryMapping {
 			BigDecimal categoryConfidence) {
 
 		private boolean matches(String text) {
+			// 규칙에 속한 키워드 중 하나라도 포함되면 해당 카테고리로 분류한다.
 			return containsAny(text, keywords.toArray(String[]::new));
 		}
 

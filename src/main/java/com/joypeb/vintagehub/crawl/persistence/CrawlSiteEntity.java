@@ -67,13 +67,16 @@ public class CrawlSiteEntity {
 
 	public void markCrawled(boolean changed) {
 		Instant now = Instant.now();
+		// 크롤링 실행 여부는 변경 감지 여부와 무관하게 항상 갱신한다.
 		this.lastCrawledAt = now;
 		if (changed) {
+			// 신규/수정 상품이 있으면 변경 시각을 갱신하고 무변경 누적 횟수를 초기화한다.
 			this.lastChangedAt = now;
 			this.lastChangeDetectedAt = now;
 			this.consecutiveNoChangeCount = 0;
 			return;
 		}
+		// 수집은 되었지만 상품 변화가 없으면 스케줄 판단에 쓸 무변경 카운트를 증가시킨다.
 		this.consecutiveNoChangeCount++;
 	}
 
@@ -90,6 +93,7 @@ public class CrawlSiteEntity {
 	}
 
 	public URI baseUrl() {
+		// DB에는 문자열로 보관하고 도메인 로직에서는 URI 타입으로 다룬다.
 		return URI.create(baseUrl);
 	}
 

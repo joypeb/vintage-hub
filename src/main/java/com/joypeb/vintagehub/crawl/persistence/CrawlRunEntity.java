@@ -70,12 +70,14 @@ public class CrawlRunEntity {
 	}
 
 	public void markRunning() {
+		// 실행 시작 시각과 상태 메시지를 기록해 관리자 화면이 즉시 진행 상태를 표시할 수 있게 한다.
 		this.status = CrawlRunStatus.RUNNING;
 		this.startedAt = Instant.now();
 		this.message = "Crawl run started.";
 	}
 
 	public void markProgress(int foundCount, int createdCount, int updatedCount, int failedCount, String message) {
+		// 긴 크롤링 중간에도 누적 카운트와 현재 처리 메시지를 갱신한다.
 		this.foundCount = foundCount;
 		this.createdCount = createdCount;
 		this.updatedCount = updatedCount;
@@ -84,6 +86,7 @@ public class CrawlRunEntity {
 	}
 
 	public void markSucceeded(int foundCount, int createdCount, int updatedCount, int failedCount, String message) {
+		// 성공 종료 시각과 최종 카운트를 한 번에 저장한다.
 		this.status = CrawlRunStatus.SUCCEEDED;
 		this.finishedAt = Instant.now();
 		this.foundCount = foundCount;
@@ -94,6 +97,7 @@ public class CrawlRunEntity {
 	}
 
 	public void markFailed(String message) {
+		// 실패 시에는 기존 진행 카운트를 유지하고 종료 상태/메시지만 갱신한다.
 		this.status = CrawlRunStatus.FAILED;
 		this.finishedAt = Instant.now();
 		this.message = message;

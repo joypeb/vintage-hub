@@ -30,8 +30,10 @@ class JwtAuthenticationFilter extends OncePerRequestFilter {
 			throws ServletException, IOException {
 		String authorization = request.getHeader("Authorization");
 		if (authorization != null && authorization.startsWith(BEARER_PREFIX)) {
+			// Bearer 토큰이 있는 요청만 JWT 검증을 수행하고, 공개 API는 그대로 다음 필터로 넘긴다.
 			String token = authorization.substring(BEARER_PREFIX.length());
 			jwtTokenProvider.validateAdminToken(token).ifPresentOrElse(username -> {
+				// 유효한 관리자 토큰이면 Spring Security 컨텍스트에 ROLE_ADMIN 인증을 심는다.
 				SecurityContextHolder.getContext()
 					.setAuthentication(new UsernamePasswordAuthenticationToken(username, token,
 						List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));

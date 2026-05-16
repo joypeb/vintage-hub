@@ -24,6 +24,7 @@ class AdminAuthService {
 	}
 
 	LoginResult login(String username, String password) {
+		// 사용자명, 활성화 여부, 비밀번호 해시 검증을 모두 통과한 관리자만 로그인시킨다.
 		AdminUserEntity adminUser = adminUserRepository.findByUsername(username)
 			.filter(AdminUserEntity::enabled)
 			.filter(user -> passwordEncoder.matches(password, user.passwordHash()))
@@ -35,6 +36,7 @@ class AdminAuthService {
 					.log("auth.login.failed");
 				return new InvalidAdminCredentialsException();
 			});
+		// 인증이 끝나면 관리자 API에서 사용할 Bearer 토큰을 발급한다.
 		JwtTokenProvider.IssuedToken issuedToken = jwtTokenProvider.issueAdminToken(adminUser.username());
 		log.atInfo()
 			.addKeyValue("event", "auth.login.succeeded")
@@ -46,6 +48,7 @@ class AdminAuthService {
 
 	String encodePassword(String password) {
 		if (!adminAuthProperties.passwordHashApiEnabled()) {
+			// 운영 환경에서 해시 생성 API가 노출되지 않도록 설정값으로 차단한다.
 			log.atWarn()
 				.addKeyValue("event", "auth.password_hash.rejected")
 				.addKeyValue("reason", "disabled")
@@ -53,6 +56,7 @@ class AdminAuthService {
 			throw new PasswordHashApiDisabledException();
 		}
 		if (!hasText(password)) {
+			// 빈 비밀번호는 해시로 만들지 않고 잘못된 인증 입력과 동일하게 처리한다.
 			log.atWarn()
 				.addKeyValue("event", "auth.password_hash.rejected")
 				.addKeyValue("reason", "blank-password")

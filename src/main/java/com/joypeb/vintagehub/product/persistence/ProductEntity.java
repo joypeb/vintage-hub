@@ -97,6 +97,7 @@ public class ProductEntity {
 	}
 
 	public void updateFrom(CrawledProductDetail detail, CrawledProductSummary summary, Instant collectedAt) {
+		// 상세 페이지 값을 우선 사용하고, 누락된 이름은 목록 카드의 이름으로 보완한다.
 		this.name = firstText(detail.name(), summary.name());
 		this.originalPrice = detail.originalPrice();
 		this.salePrice = detail.salePrice();
@@ -105,6 +106,7 @@ public class ProductEntity {
 		this.detailUrl = detail.ref().detailUrl().toString();
 		this.thumbnailImageUrl = detail.thumbnailImageUrl() == null ? null : detail.thumbnailImageUrl().toString();
 		this.sourceCategoryName = detail.sourceCategoryName();
+		// 원본 카테고리/상품명/설명을 표준 카테고리로 매핑해 검색 필터에 사용한다.
 		ProductCategoryMapping.ProductCategoryMappingResult categoryMapping = ProductCategoryMapping.from(site.code(),
 			detail.sourceCategoryName(), this.name, detail.description());
 		this.standardCategory = categoryMapping.standardCategory();
@@ -112,6 +114,7 @@ public class ProductEntity {
 		this.categoryConfidence = categoryMapping.categoryConfidence();
 		this.collectedAt = collectedAt;
 		this.lastSeenAt = collectedAt;
+		// 최초 수집 시점에는 상세 페이지를 확인한 것으로 보고 재고 확인 시각도 같이 초기화한다.
 		this.availabilityCheckedAt = collectedAt;
 		this.availabilityNextCheckAt = collectedAt;
 	}
@@ -119,17 +122,20 @@ public class ProductEntity {
 	public void updateFrom(CrawledProductDetail detail, CrawledProductSummary summary, Instant collectedAt,
 			Instant nextAvailabilityCheckAt) {
 		updateFrom(detail, summary, collectedAt);
+		// 호출자가 재고 재확인 시각을 별도로 계산한 경우 기본값을 덮어쓴다.
 		this.availabilityNextCheckAt = nextAvailabilityCheckAt;
 	}
 
 	public void markAvailabilityCheckSucceeded(ProductAvailability availability, Instant checkedAt,
 			Instant nextCheckAt) {
+		// 재고 확인 성공 시 현재 상태와 다음 확인 예정 시간을 함께 저장한다.
 		this.stockStatus = availability;
 		this.availabilityCheckedAt = checkedAt;
 		this.availabilityNextCheckAt = nextCheckAt;
 	}
 
 	public void markAvailabilityCheckFailed(Instant checkedAt, Instant nextCheckAt) {
+		// 실패도 명시 상태로 기록해 운영자가 확인 실패 상품을 구분할 수 있게 한다.
 		this.stockStatus = ProductAvailability.CHECK_FAILED;
 		this.availabilityCheckedAt = checkedAt;
 		this.availabilityNextCheckAt = nextCheckAt;
@@ -208,6 +214,7 @@ public class ProductEntity {
 	}
 
 	public boolean needsCrawlRepair() {
+		// 과거 크롤링에서 핵심 표시 필드가 빠진 상품은 기존 상품이어도 상세를 다시 수집한다.
 		return isBlank(name) || originalPrice == null || isBlank(thumbnailImageUrl);
 	}
 
@@ -215,6 +222,7 @@ public class ProductEntity {
 		if (first != null && !first.isBlank()) {
 			return first;
 		}
+		// 첫 번째 후보가 비어 있으면 두 번째 후보는 그대로 반환해 호출자가 필수 여부를 판단한다.
 		return second;
 	}
 
