@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.joypeb.vintagehub.crawl.application.CrawlRunRequestService;
 import com.joypeb.vintagehub.crawl.application.CrawlRunStatusResult;
+import jakarta.servlet.DispatcherType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -138,6 +140,17 @@ class AdminAuthIntegrationTest {
 			.andExpect(header().string("WWW-Authenticate", "Bearer"))
 			.andExpect(jsonPath("$.success").value(false))
 			.andExpect(jsonPath("$.error.code").value("ERROR_003"));
+	}
+
+	@Test
+	void adminApiAllowsInternalErrorDispatchWithoutJwt() throws Exception {
+		mockMvc.perform(get("/api/admin/crawl-runs/16/events")
+				.accept(MediaType.TEXT_EVENT_STREAM)
+				.with(request -> {
+					request.setDispatcherType(DispatcherType.ERROR);
+					return request;
+				}))
+			.andExpect(status().isOk());
 	}
 
 	@Test

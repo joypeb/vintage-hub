@@ -21,7 +21,7 @@ public class CrawlRunEventPublisher {
 		SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
 		emittersByRunId.computeIfAbsent(runId, ignored -> new CopyOnWriteArrayList<>()).add(emitter);
 		emitter.onCompletion(() -> remove(runId, emitter));
-		emitter.onTimeout(() -> remove(runId, emitter));
+		emitter.onTimeout(() -> completeTimedOutEmitter(runId, emitter));
 		emitter.onError(ignored -> remove(runId, emitter));
 		return emitter;
 	}
@@ -40,6 +40,16 @@ public class CrawlRunEventPublisher {
 			catch (IOException | IllegalStateException exception) {
 				remove(status.runId(), emitter);
 			}
+		}
+	}
+
+	private void completeTimedOutEmitter(Long runId, SseEmitter emitter) {
+		remove(runId, emitter);
+		try {
+			emitter.complete();
+		}
+		catch (IllegalStateException ignored) {
+			// The servlet container may have already completed the async response.
 		}
 	}
 

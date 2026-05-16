@@ -3,6 +3,7 @@ package com.joypeb.vintagehub.auth;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.joypeb.vintagehub.common.api.ApiResponse;
 import com.joypeb.vintagehub.common.api.ErrorCode;
+import jakarta.servlet.DispatcherType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
@@ -34,6 +35,7 @@ class SecurityConfig {
 		http.csrf(AbstractHttpConfigurer::disable)
 			.sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
 			.authorizeHttpRequests(authorize -> authorize
+				.dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
 				.requestMatchers(HttpMethod.POST, "/api/admin/auth/login", "/api/admin/auth/password-hash").permitAll()
 				.requestMatchers("/api/admin/**").hasRole("ADMIN")
 				.anyRequest().permitAll())

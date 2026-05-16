@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -84,6 +85,17 @@ class GlobalExceptionHandler {
 			.log("api.error.handled");
 		return ResponseEntity.status(HttpStatus.FORBIDDEN)
 			.body(ApiResponse.error(ErrorCode.FORBIDDEN, exception.getMessage()));
+	}
+
+	@ExceptionHandler(AsyncRequestTimeoutException.class)
+	ResponseEntity<Void> handleAsyncRequestTimeoutException(AsyncRequestTimeoutException exception,
+			HttpServletRequest request) {
+		log.atDebug()
+			.addKeyValue("event", "api.async.timeout")
+			.addKeyValue("path", request.getRequestURI())
+			.addKeyValue("status", 204)
+			.log("api.async.timeout");
+		return ResponseEntity.noContent().build();
 	}
 
 	@ExceptionHandler(Exception.class)
