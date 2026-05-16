@@ -93,6 +93,18 @@ public class CrawlSiteEntity {
 		return URI.create(baseUrl);
 	}
 
+	public String platform() {
+		return platform;
+	}
+
+	public int crawlIntervalMinutes() {
+		return crawlIntervalMinutes;
+	}
+
+	public CrawlerStatus crawlerStatus() {
+		return crawlerStatus;
+	}
+
 	public Instant lastCrawledAt() {
 		return lastCrawledAt;
 	}

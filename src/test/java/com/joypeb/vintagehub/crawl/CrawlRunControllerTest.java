@@ -13,6 +13,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
+import java.util.List;
+
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -70,6 +72,22 @@ class CrawlRunControllerTest {
 			.andExpect(jsonPath("$.data.updatedCount").value(1))
 			.andExpect(jsonPath("$.data.failedCount").value(0))
 			.andExpect(jsonPath("$.data.message").value("Processing pants-new"));
+	}
+
+	@Test
+	void getActiveCrawlRunsReturnsCurrentStatusSnapshots() throws Exception {
+		when(crawlRunQueryService.getActiveRuns())
+			.thenReturn(List.of(new CrawlRunStatusResult(42L, "rocketsalad", "RUNNING", 3, 1, 1, 0,
+				"Processing pants-new")));
+
+		mockMvc.perform(get("/api/admin/crawl-runs/active"))
+			.andExpect(status().isOk())
+			.andExpect(jsonPath("$.success").value(true))
+			.andExpect(jsonPath("$.data[0].runId").value(42))
+			.andExpect(jsonPath("$.data[0].siteCode").value("rocketsalad"))
+			.andExpect(jsonPath("$.data[0].status").value("RUNNING"))
+			.andExpect(jsonPath("$.data[0].foundCount").value(3))
+			.andExpect(jsonPath("$.data[0].message").value("Processing pants-new"));
 	}
 
 	@Test

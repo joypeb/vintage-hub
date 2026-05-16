@@ -40,6 +40,7 @@ class OpenApiDocumentationTest {
 			.andExpect(jsonPath("$.paths['/api/products/filter-options'].get").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/auth/login'].post").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/auth/password-hash'].post").exists())
+			.andExpect(jsonPath("$.paths['/api/admin/crawl-sites'].get").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/crawl-sites/{siteCode}/crawl-runs'].post").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/crawl-runs/{runId}'].get").exists())
 			.andExpect(jsonPath("$.paths['/api/admin/crawl-runs/active'].get").exists())

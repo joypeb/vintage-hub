@@ -572,7 +572,52 @@ GET /api/products/rocketsalad/521529
 }
 ```
 
-## 6. 관리자 수동 크롤 실행 요청
+## 6. 관리자 크롤링 사이트 목록 조회
+
+현재 서버에서 크롤링 가능한 사이트 목록을 조회한다. `crawl_site`에 등록되어 있고 애플리케이션에 `SiteCrawler`가 등록된 사이트만 반환한다.
+JWT Bearer 인증이 필요하다.
+
+### 요청
+
+```http
+GET /api/admin/crawl-sites
+Authorization: Bearer {accessToken}
+```
+
+### 성공 응답
+
+- HTTP Status: `200 OK`
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "siteCode": "rocketsalad",
+      "displayName": "로켓샐러드",
+      "baseUrl": "https://www.rocketsalad.co.kr",
+      "platform": "MakeShop",
+      "crawlIntervalMinutes": 60,
+      "crawlerStatus": "ACTIVE",
+      "lastCrawledAt": "2026-05-16T08:00:00Z"
+    }
+  ]
+}
+```
+
+### 응답 데이터 타입
+
+| 필드 | 타입 | Nullable | 설명 |
+| --- | --- | --- | --- |
+| `siteCode` | string | N | 크롤링 사이트 코드 |
+| `displayName` | string | N | 관리자 화면 표시명 |
+| `baseUrl` | string | N | 사이트 기본 URL |
+| `platform` | string | N | 쇼핑몰 플랫폼 |
+| `crawlIntervalMinutes` | integer | N | 기본 크롤링 간격 |
+| `crawlerStatus` | string enum | N | 크롤러 상태. 예: `ACTIVE`, `PAUSED`, `ERROR` |
+| `lastCrawledAt` | string datetime | Y | 마지막 크롤링 시각 |
+
+## 7. 관리자 수동 크롤 실행 요청
 
 지정한 사이트의 수동 크롤을 백그라운드로 시작한다. API는 `crawl_run`을 `RUNNING` 상태로 먼저 저장하고 `runId`를 `202 Accepted`로 반환한다.
 JWT Bearer 인증이 필요하다.
@@ -694,7 +739,7 @@ Authorization: Bearer {accessToken}
 
 이벤트 이름은 `crawl-run-progress`이고, 이벤트 데이터는 수동 크롤 실행 요청의 응답 데이터 타입과 같다.
 
-## 7. 관리자 상품 품절 여부 수동 확인
+## 8. 관리자 상품 품절 여부 수동 확인
 
 지정한 상품의 원본 상세 페이지를 다시 확인하고 `stockStatus`, `availabilityCheckedAt`, 다음 확인 예정 시각을 갱신한다.
 JWT Bearer 인증이 필요하다.

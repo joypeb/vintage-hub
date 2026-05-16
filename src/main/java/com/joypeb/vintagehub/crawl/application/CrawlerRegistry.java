@@ -24,6 +24,10 @@ public class CrawlerRegistry {
 		return crawler;
 	}
 
+	public boolean supports(String siteCode) {
+		return crawlers.containsKey(siteCode);
+	}
+
 	private Map<String, SiteCrawler> mapBySiteCode(List<SiteCrawler> crawlers) {
 		Map<String, SiteCrawler> mapped = new HashMap<>();
 		for (SiteCrawler crawler : crawlers) {
